@@ -1,0 +1,245 @@
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes:
+    light --default,
+    dark --prefersdark,
+    cupcake,
+    bumblebee,
+    emerald,
+    corporate,
+    synthwave,
+    retro,
+    cyberpunk,
+    valentine,
+    halloween,
+    garden,
+    forest,
+    aqua,
+    lofi,
+    pastel,
+    fantasy,
+    wireframe,
+    black,
+    luxury,
+    dracula,
+    cmyk,
+    autumn,
+    business,
+    acid,
+    lemonade,
+    night,
+    coffee,
+    winter,
+    dim,
+    nord,
+    sunset;
+}
+
+@import '@xyflow/react/dist/style.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --primary: #1D3D6B;
+  --secondary: #8b5cf6;
+  --font-vazir: 'Vazirmatn', Tahoma, Arial, sans-serif;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --font-sans: var(--font-vazir);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  direction: rtl;
+  font-family: var(--font-vazir);
+  scroll-behavior: smooth;
+}
+
+body {
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-vazir);
+  background: var(--fallback-b2, oklch(var(--b2)));
+  color: var(--fallback-bc, oklch(var(--bc)));
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+input,
+textarea,
+select,
+.input,
+.textarea,
+.select {
+  direction: rtl;
+  text-align: right;
+}
+
+input::placeholder,
+textarea::placeholder {
+  direction: rtl;
+  text-align: right;
+  color: color-mix(in oklab, currentColor 45%, transparent);
+}
+
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  direction: rtl;
+  text-align: right;
+}
+
+input[dir='ltr'],
+textarea[dir='ltr'],
+select[dir='ltr'],
+.ltr {
+  direction: ltr;
+  text-align: left;
+}
+
+.rtl {
+  direction: rtl;
+  text-align: right;
+}
+
+.form-control {
+  width: 100%;
+  gap: 0.35rem;
+}
+
+.form-control .label,
+.form-control > .label {
+  justify-content: flex-start;
+  padding: 0 0.15rem;
+}
+
+.form-control .label-text,
+.form-control > .label-text,
+.label .label-text {
+  color: color-mix(in oklab, currentColor 72%, transparent);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.input,
+.textarea,
+.select,
+.file-input {
+  min-height: 3rem;
+  width: 100%;
+  border-radius: 1rem;
+  border-color: color-mix(in oklab, currentColor 18%, transparent);
+  background-color: var(--fallback-b1, oklch(var(--b1)));
+  color: var(--fallback-bc, oklch(var(--bc)));
+  font-size: 0.95rem;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.input,
+.select {
+  padding-inline: 1rem;
+}
+
+.textarea {
+  padding: 0.9rem 1rem;
+  line-height: 1.9;
+}
+
+.input:focus,
+.input:focus-within,
+.textarea:focus,
+.select:focus,
+.file-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-primary) 16%, transparent);
+  outline: none;
+}
+
+.input-error,
+.textarea-error,
+.select-error {
+  border-color: var(--color-error) !important;
+}
+
+.input-error:focus,
+.textarea-error:focus,
+.select-error:focus {
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-error) 16%, transparent);
+}
+
+.modal {
+  direction: rtl;
+}
+
+.modal-box {
+  direction: rtl;
+  text-align: right;
+  border-radius: 1.5rem;
+}
+
+.avid-form-section {
+  border: 1px solid var(--fallback-b3, oklch(var(--b3)));
+  background: var(--fallback-b1, oklch(var(--b1)));
+  border-radius: 1.25rem;
+  padding: 1.25rem;
+  box-shadow: 0 12px 30px rgb(15 23 42 / 0.04);
+}
+
+.avid-form-title {
+  color: var(--fallback-bc, oklch(var(--bc)));
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.avid-form-hint {
+  color: color-mix(in oklab, currentColor 58%, transparent);
+  font-size: 0.8rem;
+  line-height: 1.8;
+}
+
+.avid-error-text {
+  color: var(--color-error);
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: color-mix(in oklab, currentColor 8%, transparent);
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, currentColor 28%, transparent);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, currentColor 42%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
