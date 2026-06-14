@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1';
-
+console.log(apiBaseUrl)
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
   _skipToast?: boolean;
