@@ -1,23 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import {
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  UserCircleIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+
 import { userService } from '@/services/user.service';
 import {
   AppUser,
   getUserDisplayName,
   getUserId,
   isManagerRole,
+  normalizeUserRole,
+  normalizeUserStatus,
   UserPayload,
   userRoleLabels,
   UserRole,
   userStatusLabels,
   UserStatus,
 } from '@/types/user';
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  UserCircleIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
 
 type UserFormModalProps = {
   open: boolean;
@@ -43,6 +47,9 @@ const defaultValues: UserPayload = {
     bio: '',
   },
   managerId: null,
+  telegramUserId: '',
+  telegramChatId: '',
+  telegramUsername: '',
 };
 
 const roleCards: Record<
@@ -66,6 +73,13 @@ const roleCards: Record<
     className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     activeClassName: 'ring-emerald-500 border-emerald-500 bg-emerald-100',
   },
+};
+
+const normalizeTelegramUsername = (value?: string): string => {
+  return String(value || '')
+    .trim()
+    .replace(/^@/, '')
+    .toLowerCase();
 };
 
 const UserFormModal = ({
@@ -135,8 +149,8 @@ const UserFormModal = ({
         email: user.email || '',
         phone: user.phone || '',
         password: '',
-        role: isManagerRole(user.role) ? 'manager' : 'employee',
-        status: (user.status as UserStatus) || 'active',
+        role: normalizeUserRole(user.role),
+        status: normalizeUserStatus(user.status),
         profile: {
           jobTitle: user.profile?.jobTitle || '',
           domain: user.profile?.domain || '',
@@ -150,6 +164,9 @@ const UserFormModal = ({
             : user.managerId
               ? getUserId(user.managerId)
               : null,
+        telegramUserId: user.telegramUserId || '',
+        telegramChatId: user.telegramChatId || '',
+        telegramUsername: normalizeTelegramUsername(user.telegramUsername),
       });
     } else {
       reset(defaultValues);
@@ -166,6 +183,9 @@ const UserFormModal = ({
         ...values,
         managerId: values.role === 'employee' ? values.managerId || null : null,
         password: values.password || undefined,
+        telegramUserId: String(values.telegramUserId || '').trim(),
+        telegramChatId: String(values.telegramChatId || '').trim(),
+        telegramUsername: normalizeTelegramUsername(values.telegramUsername),
       };
 
       if (isEditMode && user) {
@@ -198,7 +218,7 @@ const UserFormModal = ({
                   {isEditMode ? 'ویرایش کاربر' : 'ایجاد کاربر جدید'}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  ساختار دسترسی فقط شامل مدیر و کارمند است.
+                  اطلاعات کاربر، نقش، پروفایل کاری و اتصال ربات تلگرام را مدیریت کنید.
                 </p>
               </div>
             </div>
@@ -247,7 +267,9 @@ const UserFormModal = ({
                 <span className="label label-text">نام خانوادگی</span>
                 <input
                   className={`input input-bordered ${errors.lastName ? 'input-error' : ''}`}
-                  {...register('lastName', { required: 'نام خانوادگی الزامی است.' })}
+                  {...register('lastName', {
+                    required: 'نام خانوادگی الزامی است.',
+                  })}
                 />
                 {errors.lastName?.message ? (
                   <span className="mt-1 text-xs text-error">
@@ -260,7 +282,9 @@ const UserFormModal = ({
                 <span className="label label-text">نام کاربری</span>
                 <input
                   className={`input input-bordered ${errors.username ? 'input-error' : ''}`}
-                  {...register('username', { required: 'نام کاربری الزامی است.' })}
+                  {...register('username', {
+                    required: 'نام کاربری الزامی است.',
+                  })}
                 />
                 {errors.username?.message ? (
                   <span className="mt-1 text-xs text-error">
@@ -297,9 +321,16 @@ const UserFormModal = ({
                   className={`input input-bordered ${errors.password ? 'input-error' : ''}`}
                   {...register('password', {
                     required: isEditMode ? false : 'رمز عبور الزامی است.',
-                    minLength: {
-                      value: 8,
-                      message: 'رمز عبور باید حداقل ۸ کاراکتر باشد.',
+                    validate: (value) => {
+                      if (isEditMode && !value) return true;
+
+                      if (!isEditMode && !value) {
+                        return 'رمز عبور الزامی است.';
+                      }
+
+                      return (
+                        String(value).length >= 8 || 'رمز عبور باید حداقل ۸ کاراکتر باشد.'
+                      );
                     },
                   })}
                 />
@@ -385,6 +416,62 @@ const UserFormModal = ({
           </section>
 
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h4 className="font-bold text-gray-900 dark:text-gray-100">
+                  اتصال ربات تلگرام
+                </h4>
+                <p className="mt-1 text-sm leading-6 text-gray-500">
+                  این فیلدها برای اتصال کاربر پنل به ربات تلگرام استفاده می‌شود.
+                </p>
+              </div>
+
+              <div className="badge badge-info gap-1">
+                <InformationCircleIcon className="h-4 w-4" />
+                اختیاری
+              </div>
+            </div>
+
+            <div className="alert mb-4 border border-sky-200 bg-sky-50 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+              <span>
+                کاربر باید در تلگرام به ربات پیام <span dir="ltr">/start</span> بدهد. اگر متصل نباشد، ربات Telegram User ID و Telegram Chat ID را نمایش می‌دهد. همان مقادیر را اینجا وارد کنید.
+              </span>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="form-control">
+                <span className="label label-text">Telegram User ID</span>
+                <input
+                  dir="ltr"
+                  className="input input-bordered text-left"
+                  placeholder="مثلاً 123456789"
+                  {...register('telegramUserId')}
+                />
+              </label>
+
+              <label className="form-control">
+                <span className="label label-text">Telegram Chat ID</span>
+                <input
+                  dir="ltr"
+                  className="input input-bordered text-left"
+                  placeholder="مثلاً 123456789"
+                  {...register('telegramChatId')}
+                />
+              </label>
+
+              <label className="form-control">
+                <span className="label label-text">Telegram Username</span>
+                <input
+                  dir="ltr"
+                  className="input input-bordered text-left"
+                  placeholder="بدون @"
+                  {...register('telegramUsername')}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <h4 className="mb-4 font-bold text-gray-900 dark:text-gray-100">
               پروفایل کاری
             </h4>
@@ -392,12 +479,18 @@ const UserFormModal = ({
             <div className="grid gap-4 md:grid-cols-2">
               <label className="form-control">
                 <span className="label label-text">عنوان شغلی</span>
-                <input className="input input-bordered" {...register('profile.jobTitle')} />
+                <input
+                  className="input input-bordered"
+                  {...register('profile.jobTitle')}
+                />
               </label>
 
               <label className="form-control">
                 <span className="label label-text">دامنه کاری</span>
-                <input className="input input-bordered" {...register('profile.domain')} />
+                <input
+                  className="input input-bordered"
+                  {...register('profile.domain')}
+                />
               </label>
 
               <label className="form-control">

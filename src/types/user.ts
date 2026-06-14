@@ -33,6 +33,10 @@ export type AppUser = {
 
   managerId?: string | AppUser | null;
 
+  telegramUserId?: string;
+  telegramChatId?: string;
+  telegramUsername?: string;
+
   language?: 'fa';
   direction?: 'rtl';
 
@@ -53,6 +57,10 @@ export type UserPayload = {
   status: UserStatus;
   profile: UserProfile;
   managerId?: string | null;
+
+  telegramUserId?: string;
+  telegramChatId?: string;
+  telegramUsername?: string;
 };
 
 export type UserListResponse = {
@@ -100,4 +108,18 @@ export const isManagerRole = (role?: string | null): boolean => {
 
 export const isEmployeeRole = (role?: string | null): boolean => {
   return String(role || '').toLowerCase() === 'employee';
+};
+
+export const normalizeUserRole = (role?: string | null): UserRole => {
+  return isManagerRole(role) ? 'manager' : 'employee';
+};
+
+export const normalizeUserStatus = (status?: string | null): UserStatus => {
+  if (status === 'inactive' || status === 'suspended') return status;
+
+  return 'active';
+};
+
+export const hasTelegramLink = (user?: Partial<AppUser> | null): boolean => {
+  return Boolean(user?.telegramUserId || user?.telegramChatId);
 };

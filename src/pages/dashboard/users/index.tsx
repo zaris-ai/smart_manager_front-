@@ -1,25 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DashboardLayout } from '@/components/layouts';
-import { userService } from '@/services/user.service';
-import {
-  AppUser,
-  getUserDisplayName,
-  getUserId,
-  isManagerRole,
-  userRoleLabels,
-  userStatusLabels,
-} from '@/types/user';
-import { confirmToast } from '@/utils/sonner-confirm';
-import { withAuth } from '@/utils';
 import {
   ArrowPathIcon,
+  ChatBubbleLeftRightIcon,
   EyeIcon,
   EyeSlashIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
+
+import { DashboardLayout } from '@/components/layouts';
 import { RoleHelpPanel, UserFormModal } from '@/components/users';
+import { userService } from '@/services/user.service';
+import {
+  AppUser,
+  getUserDisplayName,
+  getUserId,
+  hasTelegramLink,
+  isManagerRole,
+  normalizeUserStatus,
+  userRoleLabels,
+  userStatusLabels,
+} from '@/types/user';
+import { withAuth } from '@/utils';
 
 const statusBadgeClass = (status?: string): string => {
   switch (status) {
@@ -64,6 +67,10 @@ const DashboardUsersPage = () => {
     return users.filter((user) => user.isActive).length;
   }, [users]);
 
+  const telegramLinkedCount = useMemo(() => {
+    return users.filter((user) => hasTelegramLink(user)).length;
+  }, [users]);
+
   const loadUsers = async () => {
     try {
       setLoading(true);
@@ -99,17 +106,15 @@ const DashboardUsersPage = () => {
     setFormOpen(true);
   };
 
-  const handleDelete = async (user: AppUser) => {
-    const userName = getUserDisplayName(user);
+  const closeFormModal = () => {
+    setFormOpen(false);
+    setSelectedUser(null);
+  };
 
-    const confirmed = await confirmToast({
-      title: `غیرفعال‌سازی کاربر «${userName}»`,
-      description:
-        'این کاربر دیگر امکان استفاده عادی از پنل را نخواهد داشت. اطلاعات قبلی او حذف نمی‌شود.',
-      confirmText: 'بله، غیرفعال شود',
-      cancelText: 'انصراف',
-      variant: 'warning',
-    });
+  const handleDelete = async (user: AppUser) => {
+    const confirmed = window.confirm(
+      `آیا از غیرفعال‌سازی کاربر «${getUserDisplayName(user)}» مطمئن هستید؟`,
+    );
 
     if (!confirmed) return;
 
@@ -130,12 +135,13 @@ const DashboardUsersPage = () => {
               مدیریت کاربران
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              ساختار دسترسی فقط شامل مدیر و کارمند است.
+              ایجاد، ویرایش، غیرفعال‌سازی و اتصال کاربران به ربات تلگرام.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button
+              type="button"
               className="btn btn-outline"
               onClick={() => setShowHelp((value) => !value)}
             >
@@ -147,7 +153,7 @@ const DashboardUsersPage = () => {
               {showHelp ? 'مخفی کردن راهنما' : 'نمایش راهنما'}
             </button>
 
-            <button className="btn btn-primary" onClick={openCreateModal}>
+            <button type="button" className="btn btn-primary" onClick={openCreateModal}>
               <PlusIcon className="h-5 w-5" />
               کاربر جدید
             </button>
@@ -156,7 +162,7 @@ const DashboardUsersPage = () => {
 
         {showHelp ? <RoleHelpPanel /> : null}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
             <div className="text-sm text-gray-500">مدیران</div>
             <div className="mt-2 text-3xl font-bold text-primary">
@@ -175,6 +181,13 @@ const DashboardUsersPage = () => {
             <div className="text-sm text-gray-500">کاربران فعال</div>
             <div className="mt-2 text-3xl font-bold text-success">
               {activeUsersCount}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+            <div className="text-sm text-gray-500">متصل به تلگرام</div>
+            <div className="mt-2 text-3xl font-bold text-secondary">
+              {telegramLinkedCount}
             </div>
           </div>
         </div>
@@ -209,7 +222,7 @@ const DashboardUsersPage = () => {
               <option value="suspended">تعلیق‌شده</option>
             </select>
 
-            <button className="btn btn-neutral" onClick={loadUsers}>
+            <button type="button" className="btn btn-neutral" onClick={loadUsers}>
               <ArrowPathIcon className="h-5 w-5" />
               اعمال فیلتر
             </button>
@@ -238,71 +251,95 @@ const DashboardUsersPage = () => {
                   <th>کاربر</th>
                   <th>نقش</th>
                   <th>وضعیت</th>
+                  <th>اتصال تلگرام</th>
                   <th>پروفایل کاری</th>
                   <th className="text-left">عملیات</th>
                 </tr>
               </thead>
 
               <tbody>
-                {users.map((user) => (
-                  <tr key={getUserId(user)}>
-                    <td>
-                      <div className="font-bold text-gray-900 dark:text-gray-100">
-                        {getUserDisplayName(user)}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {user.username} · {user.email}
-                      </div>
-                    </td>
+                {users.map((user) => {
+                  const normalizedStatus = normalizeUserStatus(user.status);
+                  const linkedToTelegram = hasTelegramLink(user);
 
-                    <td>
-                      <span className={`badge ${roleBadgeClass(user.role)}`}>
-                        {user.roleLabel ||
-                          userRoleLabels[
-                          isManagerRole(user.role) ? 'manager' : 'employee'
-                          ]}
-                      </span>
-                    </td>
+                  return (
+                    <tr key={getUserId(user)}>
+                      <td>
+                        <div className="font-bold text-gray-900 dark:text-gray-100">
+                          {getUserDisplayName(user)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {user.username} · {user.email}
+                        </div>
+                      </td>
 
-                    <td>
-                      <span className={`badge ${statusBadgeClass(user.status)}`}>
-                        {user.statusLabel ||
-                          userStatusLabels[
-                          (user.status as keyof typeof userStatusLabels) || 'active'
-                          ]}
-                      </span>
-                    </td>
+                      <td>
+                        <span className={`badge ${roleBadgeClass(user.role)}`}>
+                          {user.roleLabel ||
+                            userRoleLabels[
+                              isManagerRole(user.role) ? 'manager' : 'employee'
+                            ]}
+                        </span>
+                      </td>
 
-                    <td>
-                      <div className="text-sm">
-                        {user.profile?.jobTitle || 'بدون عنوان شغلی'}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {user.profile?.domain || 'بدون دامنه کاری'}
-                      </div>
-                    </td>
+                      <td>
+                        <span className={`badge ${statusBadgeClass(normalizedStatus)}`}>
+                          {user.statusLabel || userStatusLabels[normalizedStatus]}
+                        </span>
+                      </td>
 
-                    <td>
-                      <div className="flex justify-end gap-2">
-                        <button
-                          className="btn btn-warning btn-xs"
-                          onClick={() => openEditModal(user)}
-                        >
-                          <PencilSquareIcon className="h-4 w-4" />
-                          ویرایش
-                        </button>
+                      <td>
+                        {linkedToTelegram ? (
+                          <div className="space-y-1">
+                            <span className="badge badge-success gap-1">
+                              <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                              متصل
+                            </span>
 
-                        <button
-                          className="btn btn-error btn-xs"
-                          onClick={() => handleDelete(user)}
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                          غیرفعال
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            <div className="text-xs text-gray-500" dir="ltr">
+                              {user.telegramUsername
+                                ? `@${user.telegramUsername}`
+                                : user.telegramUserId || user.telegramChatId}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="badge badge-ghost">متصل نیست</span>
+                        )}
+                      </td>
+
+                      <td>
+                        <div className="text-sm">
+                          {user.profile?.jobTitle || 'بدون عنوان شغلی'}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {user.profile?.domain || 'بدون دامنه کاری'}
+                        </div>
+                      </td>
+
+                      <td>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-warning btn-xs"
+                            onClick={() => openEditModal(user)}
+                          >
+                            <PencilSquareIcon className="h-4 w-4" />
+                            ویرایش
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-error btn-xs"
+                            onClick={() => handleDelete(user)}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                            غیرفعال
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -311,7 +348,7 @@ const DashboardUsersPage = () => {
         <UserFormModal
           open={formOpen}
           user={selectedUser}
-          onClose={() => setFormOpen(false)}
+          onClose={closeFormModal}
           onSaved={loadUsers}
         />
       </div>
