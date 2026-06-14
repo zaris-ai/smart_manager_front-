@@ -93,7 +93,7 @@ const LoginForm: React.FC = () => {
       setIsLoading(false);
     }
   };
-
+  console.log('test', process.env.API_BASE_URL)
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}

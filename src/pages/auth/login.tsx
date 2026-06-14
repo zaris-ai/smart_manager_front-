@@ -13,7 +13,7 @@ const LoginPage = () => {
       router.replace('/dashboard');
     }
   }, [status, router]);
-  console.log('test' , process.env.API_BASE_URL)
+  
   return (
     <AuthLayout
       title="ورود به پنل مدیریتی آوید"
