@@ -94,6 +94,8 @@ const LoginForm: React.FC = () => {
     }
   };
   console.log('test', process.env.API_BASE_URL)
+  console.log('test', process.env.NEXT_PUBLIC_API_BASE_URL)
+
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
