@@ -451,6 +451,22 @@ export default function DashboardTestCharts() {
                       <p className="mt-1 line-clamp-2 text-xs leading-6 text-base-content/60">
                         {activity.description}
                       </p>
+
+                      {activity.files?.length ? (
+                        <div className="mt-3 space-y-1">
+                          <div className="text-xs font-semibold text-primary">
+                            فایل‌های پیوست گزارش
+                          </div>
+                          {activity.files.map((file) => (
+                            <div
+                              key={file.id}
+                              className="truncate rounded-lg bg-base-100 px-2 py-1 text-xs text-base-content/70"
+                            >
+                              {file.originalName}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 

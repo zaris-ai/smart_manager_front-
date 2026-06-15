@@ -23,6 +23,7 @@ export type ProjectFileCategory =
   | 'reports'
   | 'meeting_notes'
   | 'delivery'
+  | 'task_attachment'
   | 'other';
 
 export type ApiResponse<T> = {
@@ -50,6 +51,7 @@ export type UserSummary = {
   role?: UserRole | string;
   roleLabel?: string;
   isActive?: boolean;
+  telegramChatId?: string;
 };
 
 export type UserReference = string | UserSummary;
@@ -89,6 +91,8 @@ export type ProjectTask = {
   startDate?: string | null;
   dueDate?: string | null;
   completedAt?: string | null;
+  files?: ProjectFile[];
+  attachmentCount?: number;
   createdBy?: UserReference | null;
   updatedBy?: UserReference | null;
   createdAt: string;
@@ -100,9 +104,15 @@ export type ProjectProgressNote = {
   _id?: string;
   projectId: string;
   authorId?: UserReference | null;
+  registeredById?: UserReference | null;
   note: string;
   progressPercent?: number | null;
   statusSnapshot?: ProjectStatus | string;
+  source?: 'web' | 'telegram_bot';
+  telegramChatId?: string;
+  telegramMessageId?: number | null;
+  files?: ProjectFile[];
+  attachmentCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -111,6 +121,8 @@ export type ProjectFile = {
   id?: string;
   _id?: string;
   projectId: string;
+  progressNoteId?: string | ProjectProgressNote | null;
+  taskId?: string | ProjectTask | null;
   uploadedBy?: UserReference | null;
   fileName: string;
   originalName: string;
@@ -126,7 +138,12 @@ export type ProjectFile = {
 export type CalendarEvent = {
   id: string;
   title: string;
-  type: 'project_start' | 'project_due' | 'task_start' | 'task_due';
+  type:
+    | 'project_start'
+    | 'project_due'
+    | 'task_start'
+    | 'task_due'
+    | 'task_completed';
   projectId: string;
   taskId?: string;
   start: string;
@@ -155,12 +172,15 @@ export type ProjectTaskPayload = {
   priority: ProjectPriority;
   startDate?: string | null;
   dueDate?: string | null;
+  files?: File[];
 };
 
 export type CreateProjectNotePayload = {
+  authorId?: string;
   note: string;
   progressPercent?: number | null;
   statusSnapshot?: string;
+  file?: File | null;
 };
 
 export type ProjectListResponse = {
@@ -219,6 +239,7 @@ export const projectFileCategoryLabels: Record<ProjectFileCategory, string> = {
   reports: 'گزارش‌ها',
   meeting_notes: 'صورت‌جلسه',
   delivery: 'تحویل',
+  task_attachment: 'پیوست وظیفه',
   other: 'سایر',
 };
 

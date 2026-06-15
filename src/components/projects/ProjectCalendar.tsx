@@ -11,6 +11,7 @@ import {
 } from '@/types/project';
 import {
   CalendarDaysIcon,
+  CheckCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ClipboardDocumentListIcon,
@@ -19,6 +20,10 @@ import {
 
 type ProjectCalendarProps = {
   events: CalendarEvent[];
+  currentUserId?: string;
+  closingTaskId?: string;
+  showCloseActions?: boolean;
+  onCloseTask?: (event: CalendarEvent) => Promise<void> | void;
 };
 
 type SelectedDay = {
@@ -36,6 +41,8 @@ const weekDays = [
   'پنجشنبه',
   'جمعه',
 ];
+
+const closedTaskStatuses = ['done', 'cancelled'];
 
 const isTaskEvent = (event: CalendarEvent): boolean => {
   return event.type === 'task_start' || event.type === 'task_due';
@@ -142,9 +149,9 @@ const getEventTypeLabel = (type: CalendarEvent['type']): string => {
     case 'project_due':
       return 'موعد پروژه';
     case 'task_start':
-      return 'شروع وظیفه';
+      return 'شروع کار';
     case 'task_due':
-      return 'موعد وظیفه';
+      return 'موعد کار';
     default:
       return 'رویداد';
   }
@@ -164,7 +171,28 @@ const formatAssignedUsers = (users: UserReference[]): string => {
   return users.map((user) => getUserDisplayName(user)).join('، ');
 };
 
-export const ProjectCalendar = ({ events }: ProjectCalendarProps) => {
+const isUserAssignedToEvent = (
+  event: CalendarEvent,
+  currentUserId?: string,
+): boolean => {
+  if (!currentUserId) return true;
+
+  return event.assignedUserIds?.some((user) => {
+    return getReferenceId(user) === currentUserId;
+  });
+};
+
+const isClosedTaskEvent = (event: CalendarEvent): boolean => {
+  return closedTaskStatuses.includes(String(event.status || '').toLowerCase());
+};
+
+export const ProjectCalendar = ({
+  events,
+  currentUserId,
+  closingTaskId,
+  showCloseActions = false,
+  onCloseTask,
+}: ProjectCalendarProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<SelectedDay | null>(null);
 
@@ -221,7 +249,7 @@ export const ProjectCalendar = ({ events }: ProjectCalendarProps) => {
             </h2>
 
             <p className="mt-1 text-sm text-base-content/60">
-              روی هر روز کلیک کنید تا تمام کارهای همان روز را ببینید.
+              روی هر روز کلیک کنید تا تمام کارهای همان روز را ببینید و کارهای باز خودتان را ببندید.
             </p>
           </div>
 
@@ -387,48 +415,80 @@ export const ProjectCalendar = ({ events }: ProjectCalendarProps) => {
 
                   {selectedTaskEvents.length ? (
                     <div className="space-y-3">
-                      {selectedTaskEvents.map((event) => (
-                        <div
-                          key={event.id}
-                          className="rounded-2xl border border-base-300 bg-base-200/60 p-4"
-                        >
-                          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-                            <div>
-                              <div className="mb-2 flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`badge ${getEventBadgeClass(event.type)}`}
+                      {selectedTaskEvents.map((event) => {
+                        const canCloseTask =
+                          showCloseActions &&
+                          Boolean(event.taskId) &&
+                          !isClosedTaskEvent(event) &&
+                          isUserAssignedToEvent(event, currentUserId);
+                        const isClosing = closingTaskId === event.taskId;
+
+                        return (
+                          <div
+                            key={event.id}
+                            className="rounded-2xl border border-base-300 bg-base-200/60 p-4"
+                          >
+                            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+                              <div>
+                                <div className="mb-2 flex flex-wrap items-center gap-2">
+                                  <span
+                                    className={`badge ${getEventBadgeClass(event.type)}`}
+                                  >
+                                    {getEventTypeLabel(event.type)}
+                                  </span>
+
+                                  <span className="badge badge-outline">
+                                    {projectPriorityLabels[event.priority] ||
+                                      event.priority}
+                                  </span>
+
+                                  <span className="badge badge-ghost">
+                                    {getStatusLabel(event.status)}
+                                  </span>
+                                </div>
+
+                                <div className="text-base font-bold text-base-content">
+                                  {event.title}
+                                </div>
+
+                                <div className="mt-2 text-sm text-base-content/60">
+                                  مسئولان: {formatAssignedUsers(event.assignedUserIds)}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {canCloseTask ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-success"
+                                    disabled={isClosing}
+                                    onClick={() => onCloseTask?.(event)}
+                                  >
+                                    {isClosing ? (
+                                      <span className="loading loading-spinner loading-xs" />
+                                    ) : (
+                                      <CheckCircleIcon className="h-4 w-4" />
+                                    )}
+                                    بستن کار
+                                  </button>
+                                ) : isTaskEvent(event) && isClosedTaskEvent(event) ? (
+                                  <span className="badge badge-success gap-1">
+                                    <CheckCircleIcon className="h-4 w-4" />
+                                    بسته شده
+                                  </span>
+                                ) : null}
+
+                                <Link
+                                  href={`/dashboard/projects/${event.projectId}`}
+                                  className="btn btn-sm btn-outline"
                                 >
-                                  {getEventTypeLabel(event.type)}
-                                </span>
-
-                                <span className="badge badge-outline">
-                                  {projectPriorityLabels[event.priority] ||
-                                    event.priority}
-                                </span>
-
-                                <span className="badge badge-ghost">
-                                  {getStatusLabel(event.status)}
-                                </span>
-                              </div>
-
-                              <div className="text-base font-bold text-base-content">
-                                {event.title}
-                              </div>
-
-                              <div className="mt-2 text-sm text-base-content/60">
-                                مسئولان: {formatAssignedUsers(event.assignedUserIds)}
+                                  مشاهده پروژه
+                                </Link>
                               </div>
                             </div>
-
-                            <Link
-                              href={`/dashboard/projects/${event.projectId}`}
-                              className="btn btn-sm btn-outline"
-                            >
-                              مشاهده پروژه
-                            </Link>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-base-300 p-5 text-center text-sm text-base-content/60">

@@ -1,10 +1,14 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosError,
+  CanceledError,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { getSession, signOut } from 'next-auth/react';
 import { toast } from 'sonner';
 
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1';
-console.log(apiBaseUrl)
+
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
   _skipToast?: boolean;
@@ -23,6 +27,8 @@ type BackendSuccessResponse = {
   message?: string;
 };
 
+let logoutStarted = false;
+
 const apiClient = axios.create({
   baseURL: apiBaseUrl,
   headers: {
@@ -30,6 +36,24 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+const isBrowser = (): boolean => {
+  return typeof window !== 'undefined';
+};
+
+const redirectToLoginOnce = async () => {
+  if (!isBrowser()) return;
+  if (logoutStarted) return;
+
+  logoutStarted = true;
+
+  toast.error('نشست شما منقضی شده است. دوباره وارد شوید.');
+
+  await signOut({
+    callbackUrl: '/auth/login?expired=1',
+    redirect: true,
+  });
+};
 
 const isAuthEndpoint = (url?: string): boolean => {
   if (!url) return false;
@@ -183,17 +207,20 @@ apiClient.interceptors.request.use(async (config) => {
   deleteConfigHeader(config, 'X-Toast-Success-Message');
   deleteConfigHeader(config, 'X-Toast-Error-Message');
 
+  if (isAuthEndpoint(config.url)) {
+    return config;
+  }
+
+  if (!isBrowser()) {
+    return config;
+  }
+
   const session = await getSession();
 
   if (session?.error === 'RefreshAccessTokenError') {
-    toast.error('نشست شما منقضی شده است. دوباره وارد شوید.');
+    await redirectToLoginOnce();
 
-    await signOut({
-      callbackUrl: '/auth/login',
-      redirect: true,
-    });
-
-    return config;
+    throw new CanceledError('Session expired');
   }
 
   if (session?.accessToken) {
@@ -229,19 +256,26 @@ apiClient.interceptors.response.use(
   async (error: AxiosError<BackendErrorResponse>) => {
     const originalRequest = error.config as RetryableRequestConfig | undefined;
 
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
     const status = error.response?.status;
     const code = error.response?.data?.code;
 
     const isAccessTokenError =
       status === 401 &&
-      ['INVALID_ACCESS_TOKEN', 'ACCESS_TOKEN_REQUIRED'].includes(code || '');
+      [
+        'INVALID_ACCESS_TOKEN',
+        'ACCESS_TOKEN_REQUIRED',
+        'TOKEN_EXPIRED',
+        'UNAUTHORIZED',
+      ].includes(code || '');
 
     const shouldShowErrorToast =
-      originalRequest &&
-      !originalRequest._skipToast &&
-      !isAuthEndpoint(originalRequest.url);
+      !originalRequest._skipToast && !isAuthEndpoint(originalRequest.url);
 
-    if (!originalRequest || isAuthEndpoint(originalRequest.url)) {
+    if (isAuthEndpoint(originalRequest.url)) {
       return Promise.reject(error);
     }
 
@@ -256,27 +290,17 @@ apiClient.interceptors.response.use(
     }
 
     if (originalRequest._retry) {
-      toast.error('نشست شما منقضی شده است. دوباره وارد شوید.');
-
-      await signOut({
-        callbackUrl: '/auth/login',
-        redirect: true,
-      });
+      await redirectToLoginOnce();
 
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
 
-    const session = await getSession();
+    const session = isBrowser() ? await getSession() : null;
 
     if (!session?.accessToken || session.error === 'RefreshAccessTokenError') {
-      toast.error('نشست شما منقضی شده است. دوباره وارد شوید.');
-
-      await signOut({
-        callbackUrl: '/auth/login',
-        redirect: true,
-      });
+      await redirectToLoginOnce();
 
       return Promise.reject(error);
     }

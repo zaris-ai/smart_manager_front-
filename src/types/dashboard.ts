@@ -13,6 +13,15 @@ export type DashboardTrendItem = {
     completedTasks: number;
 };
 
+export type DashboardRecentActivityFile = {
+    id: string;
+    originalName: string;
+    fileUrl: string;
+    fileType: string;
+    fileSize: number;
+    categoryLabel: string;
+};
+
 export type DashboardRecentActivity = {
     id: string;
     type: 'project' | 'task' | 'note' | 'file';
@@ -20,6 +29,7 @@ export type DashboardRecentActivity = {
     description: string;
     date: string;
     projectId?: string;
+    files?: DashboardRecentActivityFile[];
 };
 
 export type DashboardSummary = {

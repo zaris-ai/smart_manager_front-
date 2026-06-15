@@ -1,751 +1,1299 @@
 import { DashboardLayout } from '@/components/layouts';
-import { projectService } from '@/services/project.service';
 import {
-    getFileId,
-    getNoteId,
-    getProjectId,
-    getReferenceId,
-    getTaskId,
-    getUserDisplayName,
-    Project,
-    projectFileCategoryLabels,
-    ProjectFile,
-    ProjectFileCategory,
-    projectPriorityLabels,
-    ProjectPriority,
-    ProjectProgressNote,
-    ProjectTask,
-    projectTaskStatusLabels,
-    ProjectTaskStatus,
+  ProjectTimelineFlow,
+  TimelineFlowItem,
+} from '@/components/projects/ProjectTimelineFlow';
+import { projectService } from '@/services/project.service';
+import { userService } from '@/services/user.service';
+import {
+  getFileId,
+  getNoteId,
+  getProjectId,
+  getReferenceId,
+  getTaskId,
+  getUserDisplayName,
+  isManagerUser,
+  Project,
+  projectFileCategoryLabels,
+  ProjectFile,
+  ProjectFileCategory,
+  projectPriorityLabels,
+  ProjectPriority,
+  ProjectProgressNote,
+  ProjectTask,
+  projectTaskStatusLabels,
+  ProjectTaskStatus,
 } from '@/types/project';
+import { AppUser } from '@/types/user';
 import { withAuth } from '@/utils';
 import {
-    ArrowLeftIcon,
-    ArrowPathIcon,
-    CalendarDaysIcon,
-    CheckCircleIcon,
-    ClockIcon,
-    DocumentArrowUpIcon,
-    DocumentTextIcon,
-    FlagIcon,
-    PlusIcon,
+  ArrowLeftIcon,
+  ArrowPathIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  DocumentArrowUpIcon,
+  DocumentTextIcon,
+  FlagIcon,
+  PaperClipIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-type TimelineItem = {
-    id: string;
-    date: string;
-    title: string;
-    description?: string;
-    badge: string;
+type TimelineItem = TimelineFlowItem;
+
+type TaskFormState = {
+  title: string;
+  description: string;
+  assigneeId: string;
+  startDate: string;
+  dueDate: string;
+  priority: ProjectPriority;
+  status: ProjectTaskStatus;
+  files: File[];
 };
 
 const priorityOptions: ProjectPriority[] = ['low', 'medium', 'high', 'critical'];
+
 const fileCategoryOptions = Object.keys(
-    projectFileCategoryLabels,
+  projectFileCategoryLabels,
 ) as ProjectFileCategory[];
 
+const createEmptyTaskForm = (): TaskFormState => ({
+  title: '',
+  description: '',
+  assigneeId: '',
+  startDate: '',
+  dueDate: '',
+  priority: 'medium',
+  status: 'todo',
+  files: [],
+});
+
 const formatDate = (value?: string | null): string => {
-    if (!value) return '—';
+  if (!value) return '—';
 
-    const date = new Date(value);
+  const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return '—';
 
-    return new Intl.DateTimeFormat('fa-IR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    }).format(date);
+  return new Intl.DateTimeFormat('fa-IR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+};
+
+const toDateInput = (value?: string | null): string => {
+  if (!value) return '';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toISOString().slice(0, 10);
 };
 
 const toDateKey = (value?: string | null): string => {
-    if (!value) return '';
+  if (!value) return '';
 
-    const date = new Date(value);
+  const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return '';
 
-    return date.toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
+};
+
+const isUserAssignedToTask = (task: ProjectTask, userId?: string): boolean => {
+  if (!userId) return false;
+
+  return Boolean(
+    task.assignedUserIds?.some((user) => {
+      return getReferenceId(user) === userId;
+    }),
+  );
 };
 
 const getBackendOrigin = (): string => {
-    const apiBaseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1';
+  const apiBaseUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1';
 
-    return apiBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
+  return apiBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
 };
 
 const resolveFileUrl = (fileUrl: string): string => {
-    if (!fileUrl) return '#';
-    if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
+  if (!fileUrl) return '#';
+  if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
 
-    return `${getBackendOrigin()}${fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`}`;
+  return `${getBackendOrigin()}${
+    fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`
+  }`;
+};
+
+const formatFileSize = (value?: number): string => {
+  if (!value) return 'حجم نامشخص';
+
+  if (value < 1024 * 1024) {
+    return `${Math.ceil(value / 1024)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const renderFiles = (
+  attachedFiles?: ProjectFile[],
+  title = 'فایل‌های پیوست',
+) => {
+  if (!attachedFiles?.length) return null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-primary/10 bg-primary/5 p-3">
+      <div className="mb-2 text-xs font-bold text-primary">{title}</div>
+
+      <div className="space-y-2">
+        {attachedFiles.map((file) => (
+          <a
+            key={getFileId(file)}
+            href={resolveFileUrl(file.fileUrl)}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs transition hover:border-primary dark:border-gray-700 dark:bg-gray-900"
+          >
+            <span className="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100">
+              {file.originalName}
+            </span>
+
+            <span className="shrink-0 text-gray-500">
+              {file.categoryLabel || projectFileCategoryLabels[file.category]} ·{' '}
+              {formatFileSize(file.fileSize)}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 const DashboardProjectDetailsPage = () => {
-    const router = useRouter();
-    const { data: session } = useSession();
+  const router = useRouter();
+  const { data: session } = useSession();
 
-    const projectId = typeof router.query.id === 'string' ? router.query.id : '';
-    const currentUserId = session?.user?.id || '';
+  const projectId = typeof router.query.id === 'string' ? router.query.id : '';
+  const currentUserId = session?.user?.id || '';
 
-    const [project, setProject] = useState<Project | null>(null);
-    const [tasks, setTasks] = useState<ProjectTask[]>([]);
-    const [notes, setNotes] = useState<ProjectProgressNote[]>([]);
-    const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [project, setProject] = useState<Project | null>(null);
+  const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [notes, setNotes] = useState<ProjectProgressNote[]>([]);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [managerUsers, setManagerUsers] = useState<AppUser[]>([]);
 
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [savingWorkLog, setSavingWorkLog] = useState(false);
-    const [savingTask, setSavingTask] = useState(false);
-    const [uploadingFile, setUploadingFile] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-    const [workNote, setWorkNote] = useState('');
-    const [progressPercent, setProgressPercent] = useState('');
+  const [savingWorkLog, setSavingWorkLog] = useState(false);
+  const [savingTask, setSavingTask] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
-    const [nextTaskTitle, setNextTaskTitle] = useState('');
-    const [nextTaskDescription, setNextTaskDescription] = useState('');
-    const [nextTaskStartDate, setNextTaskStartDate] = useState('');
-    const [nextTaskDueDate, setNextTaskDueDate] = useState('');
-    const [nextTaskPriority, setNextTaskPriority] =
-        useState<ProjectPriority>('medium');
+  const [workNote, setWorkNote] = useState('');
+  const [workAuthorId, setWorkAuthorId] = useState('');
+  const [progressPercent, setProgressPercent] = useState('');
+  const [workLogFile, setWorkLogFile] = useState<File | null>(null);
 
-    const [fileCategory, setFileCategory] = useState<ProjectFileCategory>('other');
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState('');
+  const [taskForm, setTaskForm] = useState<TaskFormState>(
+    createEmptyTaskForm(),
+  );
 
-    const loadProjectWorkspace = async () => {
-        if (!projectId) return;
+  const [fileCategory, setFileCategory] = useState<ProjectFileCategory>('other');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-        try {
-            setLoading(true);
-            setError('');
+  const visibleTasks = useMemo(() => {
+    return tasks.filter((task) => task.status !== 'done');
+  }, [tasks]);
 
-            const [projectResponse, tasksResponse, notesResponse, filesResponse] =
-                await Promise.all([
-                    projectService.getProject(projectId),
-                    projectService.listTasks(projectId),
-                    projectService.listNotes(projectId),
-                    projectService.listFiles(projectId),
-                ]);
+  const openTasks = useMemo(() => {
+    return visibleTasks.filter((task) => task.status !== 'cancelled');
+  }, [visibleTasks]);
 
-            setProject(projectResponse);
-            setTasks(tasksResponse);
-            setNotes(notesResponse);
-            setFiles(filesResponse);
-        } catch (err) {
-            setError(
-                err instanceof Error ? err.message : 'خطا در دریافت اطلاعات پروژه',
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
+  const todayTasks = useMemo(() => {
+    const today = toDateKey(new Date().toISOString());
 
-    useEffect(() => {
-        if (!router.isReady) return;
+    return visibleTasks.filter((task) => toDateKey(task.dueDate) === today);
+  }, [visibleTasks]);
 
-        loadProjectWorkspace();
-    }, [router.isReady, projectId]);
+  const loadProjectWorkspace = async () => {
+    if (!projectId) return;
 
-    const timelineItems = useMemo<TimelineItem[]>(() => {
-        if (!project) return [];
+    try {
+      setLoading(true);
+      setError('');
 
-        const items: TimelineItem[] = [
-            {
-                id: `project-start-${getProjectId(project)}`,
-                date: project.startDate,
-                title: 'شروع پروژه',
-                description: project.title,
-                badge: 'badge-info',
-            },
-        ];
+      const [
+        projectResponse,
+        tasksResponse,
+        notesResponse,
+        filesResponse,
+        managersResponse,
+      ] = await Promise.all([
+        projectService.getProject(projectId),
+        projectService.listTasks(projectId),
+        projectService.listNotes(projectId),
+        projectService.listFiles(projectId, { standaloneOnly: true }),
+        userService.listUsers({ role: 'manager', isActive: true, limit: 100 }),
+      ]);
 
-        if (project.dueDate) {
-            items.push({
-                id: `project-due-${getProjectId(project)}`,
-                date: project.dueDate,
-                title: 'موعد تحویل پروژه',
-                description: project.title,
-                badge: 'badge-warning',
-            });
-        }
+      setProject(projectResponse);
+      setTasks(tasksResponse || []);
+      setNotes(notesResponse || []);
+      setFiles(filesResponse || []);
+      setManagerUsers(managersResponse || []);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'خطا در دریافت اطلاعات پروژه',
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        tasks.forEach((task) => {
-            if (task.startDate) {
-                items.push({
-                    id: `task-start-${getTaskId(task)}`,
-                    date: task.startDate,
-                    title: 'شروع وظیفه',
-                    description: task.title,
-                    badge: 'badge-success',
-                });
-            }
+  useEffect(() => {
+    if (!router.isReady) return;
 
-            if (task.dueDate) {
-                items.push({
-                    id: `task-due-${getTaskId(task)}`,
-                    date: task.dueDate,
-                    title: 'موعد وظیفه',
-                    description: task.title,
-                    badge: 'badge-error',
-                });
-            }
-        });
+    loadProjectWorkspace();
+  }, [router.isReady, projectId]);
 
-        notes.forEach((note) => {
-            items.push({
-                id: `note-${getNoteId(note)}`,
-                date: note.createdAt,
-                title: 'گزارش کار ثبت شد',
-                description: note.note,
-                badge: 'badge-primary',
-            });
-        });
+  const projectManagerOptions = useMemo(() => {
+    if (managerUsers.length) return managerUsers;
 
-        return items.sort((first, second) => {
-            return new Date(first.date).getTime() - new Date(second.date).getTime();
-        });
-    }, [project, tasks, notes]);
+    if (!project) return [];
 
-    const openTasks = useMemo(() => {
-        return tasks.filter((task) => !['done', 'cancelled'].includes(task.status));
-    }, [tasks]);
+    const projectUsers = [
+      project.ownerId,
+      ...(project.assignedUserIds || []),
+    ].filter(Boolean);
 
-    const todayTasks = useMemo(() => {
-        const today = toDateKey(new Date().toISOString());
+    const uniqueManagers = new Map<string, any>();
 
-        return tasks.filter((task) => toDateKey(task.dueDate) === today);
-    }, [tasks]);
+    projectUsers.forEach((user) => {
+      if (typeof user === 'string' || !isManagerUser(user)) return;
 
-    const handleCreateWorkLog = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
+      const userId = getReferenceId(user);
 
-        if (!projectId || !workNote.trim()) return;
+      if (userId) {
+        uniqueManagers.set(userId, user);
+      }
+    });
 
-        try {
-            setSavingWorkLog(true);
-            setError('');
+    return Array.from(uniqueManagers.values());
+  }, [project, managerUsers]);
 
-            await projectService.createNote(projectId, {
-                note: workNote.trim(),
-                progressPercent: progressPercent ? Number(progressPercent) : null,
-                statusSnapshot: project?.status,
-            });
+  useEffect(() => {
+    if (!projectManagerOptions.length) return;
 
-            setWorkNote('');
-            setProgressPercent('');
-            await loadProjectWorkspace();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'خطا در ثبت گزارش کار');
-        } finally {
-            setSavingWorkLog(false);
-        }
-    };
+    const currentManager = projectManagerOptions.find((manager) => {
+      return getReferenceId(manager) === currentUserId;
+    });
 
-    const handleCreateNextTask = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
+    const defaultManagerId = getReferenceId(
+      currentManager || projectManagerOptions[0],
+    );
 
-        if (!projectId || !nextTaskTitle.trim()) return;
-
-        try {
-            setSavingTask(true);
-            setError('');
-
-            await projectService.createTask(projectId, {
-                title: nextTaskTitle.trim(),
-                description: nextTaskDescription.trim(),
-                assignedUserIds: currentUserId ? [currentUserId] : [],
-                status: 'todo',
-                priority: nextTaskPriority,
-                startDate: nextTaskStartDate || null,
-                dueDate: nextTaskDueDate || null,
-            });
-
-            setNextTaskTitle('');
-            setNextTaskDescription('');
-            setNextTaskStartDate('');
-            setNextTaskDueDate('');
-            setNextTaskPriority('medium');
-            await loadProjectWorkspace();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'خطا در ثبت کار بعدی');
-        } finally {
-            setSavingTask(false);
-        }
-    };
-
-    const handleUploadFile = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-
-        const form = event.currentTarget;
-
-        if (!projectId || !selectedFile) return;
-
-        try {
-            setUploadingFile(true);
-            setError('');
-
-            await projectService.uploadFile(projectId, {
-                file: selectedFile,
-                category: fileCategory,
-            });
-
-            setSelectedFile(null);
-            setFileCategory('other');
-            form.reset();
-
-            await loadProjectWorkspace();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'خطا در آپلود فایل');
-        } finally {
-            setUploadingFile(false);
-        }
-    };
-
-    const handleUpdateTaskStatus = async (
-        task: ProjectTask,
-        status: ProjectTaskStatus,
-    ) => {
-        if (!projectId) return;
-
-        try {
-            setError('');
-            await projectService.updateTask(projectId, getTaskId(task), { status });
-            await loadProjectWorkspace();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'خطا در تغییر وضعیت وظیفه');
-        }
-    };
-
-    if (loading) {
-        return (
-            <DashboardLayout>
-                <div className="flex justify-center py-24" dir="rtl">
-                    <span className="loading loading-spinner loading-lg" />
-                </div>
-            </DashboardLayout>
-        );
+    if (!workAuthorId) {
+      setWorkAuthorId(defaultManagerId);
     }
 
+    if (!taskForm.assigneeId) {
+      setTaskForm((previous) => ({
+        ...previous,
+        assigneeId: defaultManagerId,
+      }));
+    }
+  }, [currentUserId, projectManagerOptions, taskForm.assigneeId, workAuthorId]);
+
+  const timelineItems = useMemo<TimelineItem[]>(() => {
+    if (!project) return [];
+
+    const items: TimelineItem[] = [
+      {
+        id: `project-start-${getProjectId(project)}`,
+        date: project.startDate,
+        title: 'شروع پروژه',
+        description: project.description || project.title,
+        type: 'project_start',
+        meta: [
+          {
+            label: 'عنوان پروژه',
+            value: project.title,
+          },
+          {
+            label: 'وضعیت پروژه',
+            value: project.statusLabel || project.status || '—',
+          },
+          {
+            label: 'اولویت پروژه',
+            value:
+              projectPriorityLabels[project.priority] || project.priority || '—',
+          },
+          {
+            label: 'تاریخ شروع',
+            value: formatDate(project.startDate),
+          },
+          {
+            label: 'موعد تحویل',
+            value: formatDate(project.dueDate),
+          },
+        ],
+      },
+    ];
+
+    if (project.dueDate) {
+      items.push({
+        id: `project-due-${getProjectId(project)}`,
+        date: project.dueDate,
+        title: 'موعد تحویل پروژه',
+        description: project.description || project.title,
+        type: 'project_due',
+        meta: [
+          {
+            label: 'عنوان پروژه',
+            value: project.title,
+          },
+          {
+            label: 'وضعیت پروژه',
+            value: project.statusLabel || project.status || '—',
+          },
+          {
+            label: 'اولویت پروژه',
+            value:
+              projectPriorityLabels[project.priority] || project.priority || '—',
+          },
+          {
+            label: 'تاریخ شروع',
+            value: formatDate(project.startDate),
+          },
+          {
+            label: 'موعد تحویل',
+            value: formatDate(project.dueDate),
+          },
+        ],
+      });
+    }
+
+    tasks.forEach((task) => {
+      const taskMeta = [
+        {
+          label: 'عنوان وظیفه',
+          value: task.title,
+        },
+        {
+          label: 'مسئول',
+          value: task.assignedUserIds?.length
+            ? task.assignedUserIds
+                .map((user) => getUserDisplayName(user))
+                .join('، ')
+            : 'بدون مسئول مشخص',
+        },
+        {
+          label: 'وضعیت',
+          value: projectTaskStatusLabels[task.status] || task.status || '—',
+        },
+        {
+          label: 'اولویت',
+          value: projectPriorityLabels[task.priority] || task.priority || '—',
+        },
+        {
+          label: 'تاریخ شروع',
+          value: formatDate(task.startDate),
+        },
+        {
+          label: 'موعد انجام',
+          value: formatDate(task.dueDate),
+        },
+        {
+          label: 'تعداد فایل',
+          value: `${task.files?.length || task.attachmentCount || 0}`,
+        },
+      ];
+
+      if (task.status !== 'done' && task.startDate) {
+        items.push({
+          id: `task-start-${getTaskId(task)}`,
+          date: task.startDate,
+          title: `شروع وظیفه: ${task.title}`,
+          description: task.description || 'برای این وظیفه توضیحی ثبت نشده است.',
+          type: 'task_start',
+          statusLabel: projectTaskStatusLabels[task.status] || task.status,
+          priorityLabel: projectPriorityLabels[task.priority] || task.priority,
+          files: task.files || [],
+          meta: taskMeta,
+        });
+      }
+
+      if (task.status !== 'done' && task.dueDate) {
+        items.push({
+          id: `task-due-${getTaskId(task)}`,
+          date: task.dueDate,
+          title: `موعد وظیفه: ${task.title}`,
+          description: task.description || 'برای این وظیفه توضیحی ثبت نشده است.',
+          type: 'task_due',
+          statusLabel: projectTaskStatusLabels[task.status] || task.status,
+          priorityLabel: projectPriorityLabels[task.priority] || task.priority,
+          files: task.files || [],
+          meta: taskMeta,
+        });
+      }
+
+      if (task.status === 'done' && task.completedAt) {
+        items.push({
+          id: `task-completed-${getTaskId(task)}`,
+          date: task.completedAt,
+          title: `تکمیل وظیفه: ${task.title}`,
+          description:
+            task.description ||
+            'این وظیفه از پنل یا بات تلگرام تکمیل شده است.',
+          type: 'task_completed',
+          statusLabel: projectTaskStatusLabels[task.status] || task.status,
+          priorityLabel: projectPriorityLabels[task.priority] || task.priority,
+          files: task.files || [],
+          meta: [
+            ...taskMeta,
+            {
+              label: 'زمان تکمیل',
+              value: formatDate(task.completedAt),
+            },
+          ],
+        });
+      }
+    });
+
+    notes.forEach((note) => {
+      items.push({
+        id: `note-${getNoteId(note)}`,
+        date: note.createdAt,
+        title: `کار انجام‌شده توسط ${getUserDisplayName(note.authorId)}`,
+        description: note.note,
+        type: 'work_report',
+        progressPercent: note.progressPercent,
+        files: note.files || [],
+        meta: [
+          {
+            label: 'مدیر انجام‌دهنده',
+            value: getUserDisplayName(note.authorId),
+          },
+          {
+            label: 'ثبت‌شده توسط',
+            value: getUserDisplayName(note.registeredById || note.authorId),
+          },
+          {
+            label: 'تاریخ ثبت',
+            value: formatDate(note.createdAt),
+          },
+          {
+            label: 'درصد پیشرفت',
+            value:
+              note.progressPercent !== null && note.progressPercent !== undefined
+                ? `${note.progressPercent}%`
+                : 'ثبت نشده',
+          },
+          {
+            label: 'تعداد فایل پیوست',
+            value: `${note.files?.length || 0}`,
+          },
+          {
+            label: 'منبع ثبت',
+            value: note.source === 'telegram_bot' ? 'بات تلگرام' : 'پنل',
+          },
+        ],
+      });
+    });
+
+    return items.sort((first, second) => {
+      return new Date(first.date).getTime() - new Date(second.date).getTime();
+    });
+  }, [project, tasks, notes]);
+
+  const resetTaskForm = () => {
+    const currentAssigneeId = taskForm.assigneeId;
+
+    setEditingTaskId('');
+    setTaskForm({
+      ...createEmptyTaskForm(),
+      assigneeId: currentAssigneeId,
+    });
+  };
+
+  const startEditTask = (task: ProjectTask) => {
+    setEditingTaskId(getTaskId(task));
+    setTaskForm({
+      title: task.title || '',
+      description: task.description || '',
+      assigneeId: getReferenceId(task.assignedUserIds?.[0]),
+      startDate: toDateInput(task.startDate),
+      dueDate: toDateInput(task.dueDate),
+      priority: task.priority || 'medium',
+      status: task.status || 'todo',
+      files: [],
+    });
+  };
+
+  const handleSubmitTask = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!projectId || !taskForm.title.trim()) return;
+
+    if (!taskForm.assigneeId) {
+      setError('برای تعریف وظیفه، انتخاب مدیر مسئول الزامی است.');
+      return;
+    }
+
+    try {
+      setSavingTask(true);
+      setError('');
+
+      const payload = {
+        title: taskForm.title.trim(),
+        description: taskForm.description.trim(),
+        assignedUserIds: [taskForm.assigneeId],
+        status: taskForm.status,
+        priority: taskForm.priority,
+        startDate: taskForm.startDate || null,
+        dueDate: taskForm.dueDate || null,
+        files: taskForm.files,
+      };
+
+      if (editingTaskId) {
+        await projectService.updateTask(projectId, editingTaskId, payload);
+      } else {
+        await projectService.createTask(projectId, payload);
+      }
+
+      resetTaskForm();
+
+      await loadProjectWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در ذخیره وظیفه');
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const handleCreateWorkLog = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+
+    if (!projectId || !workNote.trim()) return;
+
+    if (!workAuthorId) {
+      setError('برای ثبت کار انجام‌شده، انتخاب مدیر انجام‌دهنده الزامی است.');
+      return;
+    }
+
+    try {
+      setSavingWorkLog(true);
+      setError('');
+
+      await projectService.createNote(projectId, {
+        authorId: workAuthorId,
+        note: workNote.trim(),
+        progressPercent: progressPercent ? Number(progressPercent) : null,
+        statusSnapshot: project?.status,
+        file: workLogFile,
+      });
+
+      setWorkNote('');
+      setProgressPercent('');
+      setWorkLogFile(null);
+      form.reset();
+
+      await loadProjectWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در ثبت گزارش کار');
+    } finally {
+      setSavingWorkLog(false);
+    }
+  };
+
+  const handleUploadFile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+
+    if (!projectId || !selectedFile) return;
+
+    try {
+      setUploadingFile(true);
+      setError('');
+
+      await projectService.uploadFile(projectId, {
+        file: selectedFile,
+        category: fileCategory,
+      });
+
+      setSelectedFile(null);
+      setFileCategory('other');
+      form.reset();
+
+      await loadProjectWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در آپلود فایل');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleUpdateTaskStatus = async (
+    task: ProjectTask,
+    status: ProjectTaskStatus,
+  ) => {
+    if (!projectId) return;
+
+    try {
+      setError('');
+
+      if (status === 'done') {
+        await projectService.closeTask(projectId, getTaskId(task));
+      } else {
+        await projectService.updateTask(projectId, getTaskId(task), {
+          title: task.title,
+          description: task.description || '',
+          assignedUserIds: task.assignedUserIds
+            .map((user) => getReferenceId(user))
+            .filter(Boolean),
+          priority: task.priority,
+          status,
+          startDate: task.startDate,
+          dueDate: task.dueDate,
+        });
+      }
+
+      await loadProjectWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در تغییر وضعیت وظیفه');
+    }
+  };
+
+  if (loading) {
     return (
-        <DashboardLayout>
-            <div className="space-y-6" dir="rtl">
-                <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-                    <div>
-                        <Link
-                            href="/dashboard/projects"
-                            className="mb-3 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary"
-                        >
-                            <ArrowLeftIcon className="h-4 w-4" />
-                            بازگشت به پروژه‌ها
-                        </Link>
+      <DashboardLayout>
+        <div className="flex justify-center py-24" dir="rtl">
+          <span className="loading loading-spinner loading-lg" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                            {project?.title || 'پروژه'}
-                        </h1>
-                        <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-                            {project?.description || 'برای این پروژه توضیحی ثبت نشده است.'}
-                        </p>
-                    </div>
+  return (
+    <DashboardLayout>
+      <div className="space-y-6" dir="rtl">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+          <div>
+            <Link
+              href="/dashboard/projects"
+              className="mb-3 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary"
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+              بازگشت به پروژه‌ها
+            </Link>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Link href="/dashboard/calendar" className="btn btn-outline">
-                            <CalendarDaysIcon className="h-5 w-5" />
-                            مشاهده در تقویم
-                        </Link>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              {project?.title || 'پروژه'}
+            </h1>
 
-                        <button className="btn btn-ghost" onClick={loadProjectWorkspace}>
-                            <ArrowPathIcon className="h-5 w-5" />
-                            بروزرسانی
-                        </button>
-                    </div>
+            <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+              {project?.description || 'برای این پروژه توضیحی ثبت نشده است.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/dashboard/calendar" className="btn btn-outline">
+              <CalendarDaysIcon className="h-5 w-5" />
+              مشاهده در تقویم
+            </Link>
+
+            <button className="btn btn-ghost" onClick={loadProjectWorkspace}>
+              <ArrowPathIcon className="h-5 w-5" />
+              بروزرسانی
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="alert alert-error">
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        {project ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <ClockIcon className="h-5 w-5" />
+                  شروع پروژه
                 </div>
 
-                {error ? (
-                    <div className="alert alert-error">
-                        <span>{error}</span>
-                    </div>
-                ) : null}
+                <div className="mt-2 text-lg font-bold text-gray-900 dark:text-gray-100">
+                  {formatDate(project.startDate)}
+                </div>
+              </div>
 
-                {project ? (
-                    <>
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                    <ClockIcon className="h-5 w-5" />
-                                    شروع پروژه
-                                </div>
-                                <div className="mt-2 text-lg font-bold text-gray-900 dark:text-gray-100">
-                                    {formatDate(project.startDate)}
-                                </div>
-                            </div>
+              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <CalendarDaysIcon className="h-5 w-5" />
+                  موعد تحویل
+                </div>
 
-                            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                    <CalendarDaysIcon className="h-5 w-5" />
-                                    موعد تحویل
-                                </div>
-                                <div className="mt-2 text-lg font-bold text-gray-900 dark:text-gray-100">
-                                    {formatDate(project.dueDate)}
-                                </div>
-                            </div>
+                <div className="mt-2 text-lg font-bold text-gray-900 dark:text-gray-100">
+                  {formatDate(project.dueDate)}
+                </div>
+              </div>
 
-                            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                    <FlagIcon className="h-5 w-5" />
-                                    کارهای باز
-                                </div>
-                                <div className="mt-2 text-3xl font-bold text-primary">
-                                    {openTasks.length}
-                                </div>
-                            </div>
+              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <FlagIcon className="h-5 w-5" />
+                  وظایف باز
+                </div>
 
-                            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                    <CheckCircleIcon className="h-5 w-5" />
-                                    کارهای امروز
-                                </div>
-                                <div className="mt-2 text-3xl font-bold text-success">
-                                    {todayTasks.length}
-                                </div>
-                            </div>
-                        </div>
+                <div className="mt-2 text-3xl font-bold text-primary">
+                  {openTasks.length}
+                </div>
+              </div>
 
-                        <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                اعضای پروژه
-                            </h2>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                                {project.assignedUserIds.length ? (
-                                    project.assignedUserIds.map((user) => (
-                                        <span key={getReferenceId(user)} className="badge badge-outline">
-                                            {getUserDisplayName(user)}
-                                        </span>
-                                    ))
-                                ) : (
-                                    <span className="text-sm text-gray-500">
-                                        هنوز کاربری به پروژه تخصیص داده نشده است.
-                                    </span>
-                                )}
-                            </div>
-                        </div>
+              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <CheckCircleIcon className="h-5 w-5" />
+                  وظایف امروز
+                </div>
 
-                        <div className="grid gap-6 xl:grid-cols-3">
-                            <div className="space-y-6 xl:col-span-2">
-                                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                    <div className="mb-5 flex items-center justify-between gap-3">
-                                        <div>
-                                            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                                کارهای بعدی پروژه
-                                            </h2>
-                                            <p className="mt-1 text-sm text-gray-500">
-                                                هر کاری که موعد داشته باشد به صورت خودکار در تقویم نمایش داده می‌شود.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <form
-                                        onSubmit={handleCreateNextTask}
-                                        className="mb-6 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700"
-                                    >
-                                        <div className="grid gap-3 lg:grid-cols-2">
-                                            <input
-                                                className="input input-bordered"
-                                                placeholder="عنوان کار بعدی"
-                                                value={nextTaskTitle}
-                                                onChange={(event) => setNextTaskTitle(event.target.value)}
-                                                required
-                                            />
-
-                                            <select
-                                                className="select select-bordered"
-                                                value={nextTaskPriority}
-                                                onChange={(event) =>
-                                                    setNextTaskPriority(event.target.value as ProjectPriority)
-                                                }
-                                            >
-                                                {priorityOptions.map((priority) => (
-                                                    <option key={priority} value={priority}>
-                                                        {projectPriorityLabels[priority]}
-                                                    </option>
-                                                ))}
-                                            </select>
-
-                                            <input
-                                                type="date"
-                                                className="input input-bordered"
-                                                value={nextTaskStartDate}
-                                                onChange={(event) =>
-                                                    setNextTaskStartDate(event.target.value)
-                                                }
-                                            />
-
-                                            <input
-                                                type="date"
-                                                className="input input-bordered"
-                                                value={nextTaskDueDate}
-                                                onChange={(event) => setNextTaskDueDate(event.target.value)}
-                                            />
-
-                                            <textarea
-                                                className="textarea textarea-bordered lg:col-span-2"
-                                                placeholder="توضیح کوتاه درباره کار بعدی"
-                                                value={nextTaskDescription}
-                                                onChange={(event) =>
-                                                    setNextTaskDescription(event.target.value)
-                                                }
-                                            />
-                                        </div>
-
-                                        <div className="mt-4 flex justify-end">
-                                            <button
-                                                type="submit"
-                                                className="btn btn-primary"
-                                                disabled={savingTask}
-                                            >
-                                                <PlusIcon className="h-5 w-5" />
-                                                {savingTask ? 'در حال ثبت...' : 'ثبت کار بعدی'}
-                                            </button>
-                                        </div>
-                                    </form>
-
-                                    <div className="space-y-3">
-                                        {tasks.length ? (
-                                            tasks.map((task) => (
-                                                <div
-                                                    key={getTaskId(task)}
-                                                    className="rounded-xl border border-gray-200 p-4 dark:border-gray-800"
-                                                >
-                                                    <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-                                                        <div>
-                                                            <div className="font-bold text-gray-900 dark:text-gray-100">
-                                                                {task.title}
-                                                            </div>
-                                                            <div className="mt-1 text-sm text-gray-500">
-                                                                {task.description || 'بدون توضیح'}
-                                                            </div>
-                                                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                                                                <span className="badge badge-outline">
-                                                                    {projectTaskStatusLabels[task.status] || task.status}
-                                                                </span>
-                                                                <span className="badge badge-outline">
-                                                                    {projectPriorityLabels[task.priority] || task.priority}
-                                                                </span>
-                                                                <span className="badge badge-ghost">
-                                                                    شروع: {formatDate(task.startDate)}
-                                                                </span>
-                                                                <span className="badge badge-ghost">
-                                                                    موعد: {formatDate(task.dueDate)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {task.status !== 'in_progress' ? (
-                                                                <button
-                                                                    className="btn btn-xs btn-outline"
-                                                                    onClick={() =>
-                                                                        handleUpdateTaskStatus(task, 'in_progress')
-                                                                    }
-                                                                >
-                                                                    شروع
-                                                                </button>
-                                                            ) : null}
-
-                                                            {task.status !== 'done' ? (
-                                                                <button
-                                                                    className="btn btn-xs btn-success"
-                                                                    onClick={() => handleUpdateTaskStatus(task, 'done')}
-                                                                >
-                                                                    انجام شد
-                                                                </button>
-                                                            ) : null}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700">
-                                                هنوز کاری برای این پروژه ثبت نشده است.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                    <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                        تایم‌لاین پروژه
-                                    </h2>
-                                    <p className="mt-1 text-sm text-gray-500">
-                                        شروع پروژه، موعدها، کارها و گزارش‌های ثبت‌شده در یک مسیر زمانی نمایش داده می‌شوند.
-                                    </p>
-
-                                    <div className="mt-6 space-y-4">
-                                        {timelineItems.map((item) => (
-                                            <div key={item.id} className="flex gap-3">
-                                                <div className="flex flex-col items-center">
-                                                    <span className={`badge badge-sm ${item.badge}`} />
-                                                    <span className="mt-1 h-full w-px bg-gray-200 dark:bg-gray-700" />
-                                                </div>
-                                                <div className="pb-4">
-                                                    <div className="text-xs text-gray-500">
-                                                        {formatDate(item.date)}
-                                                    </div>
-                                                    <div className="mt-1 font-bold text-gray-900 dark:text-gray-100">
-                                                        {item.title}
-                                                    </div>
-                                                    {item.description ? (
-                                                        <div className="mt-1 line-clamp-2 text-sm text-gray-500">
-                                                            {item.description}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-6">
-                                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                    <div className="mb-4 flex items-center gap-2">
-                                        <DocumentTextIcon className="h-5 w-5 text-primary" />
-                                        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                            ثبت کار انجام‌شده
-                                        </h2>
-                                    </div>
-
-                                    <form onSubmit={handleCreateWorkLog} className="space-y-4">
-                                        <textarea
-                                            className="textarea textarea-bordered min-h-32 w-full"
-                                            placeholder="امروز چه کاری روی این پروژه انجام شد؟"
-                                            value={workNote}
-                                            onChange={(event) => setWorkNote(event.target.value)}
-                                            required
-                                        />
-
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            className="input input-bordered w-full"
-                                            placeholder="درصد پیشرفت اختیاری، مثلاً ۴۰"
-                                            value={progressPercent}
-                                            onChange={(event) => setProgressPercent(event.target.value)}
-                                        />
-
-                                        <button
-                                            type="submit"
-                                            className="btn btn-primary w-full"
-                                            disabled={savingWorkLog}
-                                        >
-                                            {savingWorkLog ? 'در حال ثبت...' : 'ثبت گزارش کار'}
-                                        </button>
-                                    </form>
-
-                                    <div className="mt-6 space-y-3">
-                                        {notes.slice(0, 5).map((note) => (
-                                            <div
-                                                key={getNoteId(note)}
-                                                className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800"
-                                            >
-                                                <div className="text-xs text-gray-500">
-                                                    {formatDate(note.createdAt)} · {getUserDisplayName(note.authorId)}
-                                                </div>
-                                                <div className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                                                    {note.note}
-                                                </div>
-                                                {note.progressPercent !== null &&
-                                                    note.progressPercent !== undefined ? (
-                                                    <div className="mt-2 text-xs text-primary">
-                                                        پیشرفت: {note.progressPercent}%
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                                    <div className="mb-4 flex items-center gap-2">
-                                        <DocumentArrowUpIcon className="h-5 w-5 text-primary" />
-                                        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                            فایل‌های پروژه
-                                        </h2>
-                                    </div>
-
-                                    <form onSubmit={handleUploadFile} className="space-y-4">
-                                        <input
-                                            type="file"
-                                            className="file-input file-input-bordered w-full"
-                                            onChange={(event) =>
-                                                setSelectedFile(event.target.files?.[0] || null)
-                                            }
-                                        />
-
-                                        <select
-                                            className="select select-bordered w-full"
-                                            value={fileCategory}
-                                            onChange={(event) =>
-                                                setFileCategory(event.target.value as ProjectFileCategory)
-                                            }
-                                        >
-                                            {fileCategoryOptions.map((category) => (
-                                                <option key={category} value={category}>
-                                                    {projectFileCategoryLabels[category]}
-                                                </option>
-                                            ))}
-                                        </select>
-
-                                        <button
-                                            type="submit"
-                                            className="btn btn-outline w-full"
-                                            disabled={uploadingFile || !selectedFile}
-                                        >
-                                            {uploadingFile ? 'در حال آپلود...' : 'آپلود فایل'}
-                                        </button>
-                                    </form>
-
-                                    <div className="mt-6 space-y-3">
-                                        {files.length ? (
-                                            files.map((file) => (
-                                                <a
-                                                    key={getFileId(file)}
-                                                    href={resolveFileUrl(file.fileUrl)}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="block rounded-xl border border-gray-200 p-3 transition hover:border-primary dark:border-gray-800"
-                                                >
-                                                    <div className="font-medium text-gray-900 dark:text-gray-100">
-                                                        {file.originalName}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-gray-500">
-                                                        {file.categoryLabel || projectFileCategoryLabels[file.category]} · {getUserDisplayName(file.uploadedBy)}
-                                                    </div>
-                                                </a>
-                                            ))
-                                        ) : (
-                                            <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500 dark:border-gray-700">
-                                                هنوز فایلی برای پروژه ثبت نشده است.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </>
-                ) : (
-                    <div className="rounded-2xl bg-white p-8 text-center shadow-sm dark:bg-gray-900">
-                        پروژه پیدا نشد یا به آن دسترسی ندارید.
-                    </div>
-                )}
+                <div className="mt-2 text-3xl font-bold text-success">
+                  {todayTasks.length}
+                </div>
+              </div>
             </div>
-        </DashboardLayout>
-    );
+
+            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                اعضای پروژه
+              </h2>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {project.assignedUserIds.length ? (
+                  project.assignedUserIds.map((user) => (
+                    <span
+                      key={getReferenceId(user)}
+                      className="badge badge-outline"
+                    >
+                      {getUserDisplayName(user)}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-gray-500">
+                    هنوز کاربری به پروژه تخصیص داده نشده است.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-3">
+              <div className="space-y-6 xl:col-span-2">
+                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                  <div className="mb-5">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      {editingTaskId
+                        ? 'ویرایش وظیفه مدیر'
+                        : 'تعریف وظیفه برای مدیران'}
+                    </h2>
+
+                    <p className="mt-1 text-sm text-gray-500">
+                      وظایف می‌توانند از پنل یا بات تلگرام ثبت شوند. فایل‌های
+                      ارسال‌شده از تلگرام نیز به عنوان پیوست وظیفه نمایش داده
+                      می‌شوند. وظایف تکمیل‌شده در لیست فعال نمایش داده نمی‌شوند،
+                      اما در تایم‌لاین باقی می‌مانند.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={handleSubmitTask}
+                    className="mb-6 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700"
+                  >
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      <input
+                        className="input input-bordered"
+                        placeholder="عنوان وظیفه"
+                        value={taskForm.title}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            title: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+
+                      <select
+                        className="select select-bordered"
+                        value={taskForm.assigneeId}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            assigneeId: event.target.value,
+                          }))
+                        }
+                        required
+                      >
+                        <option value="">انتخاب مدیر مسئول</option>
+
+                        {projectManagerOptions.map((manager) => (
+                          <option
+                            key={getReferenceId(manager)}
+                            value={getReferenceId(manager)}
+                          >
+                            {getUserDisplayName(manager)}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="select select-bordered"
+                        value={taskForm.priority}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            priority: event.target.value as ProjectPriority,
+                          }))
+                        }
+                      >
+                        {priorityOptions.map((priority) => (
+                          <option key={priority} value={priority}>
+                            {projectPriorityLabels[priority]}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="select select-bordered"
+                        value={taskForm.status}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            status: event.target.value as ProjectTaskStatus,
+                          }))
+                        }
+                      >
+                        {Object.entries(projectTaskStatusLabels).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ),
+                        )}
+                      </select>
+
+                      <input
+                        type="date"
+                        className="input input-bordered"
+                        value={taskForm.startDate}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            startDate: event.target.value,
+                          }))
+                        }
+                      />
+
+                      <input
+                        type="date"
+                        className="input input-bordered"
+                        value={taskForm.dueDate}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            dueDate: event.target.value,
+                          }))
+                        }
+                      />
+
+                      <textarea
+                        className="textarea textarea-bordered lg:col-span-2"
+                        placeholder="توضیحات وظیفه"
+                        value={taskForm.description}
+                        onChange={(event) =>
+                          setTaskForm((previous) => ({
+                            ...previous,
+                            description: event.target.value,
+                          }))
+                        }
+                      />
+
+                      <div className="lg:col-span-2">
+                        <input
+                          type="file"
+                          multiple
+                          className="file-input file-input-bordered w-full"
+                          onChange={(event) =>
+                            setTaskForm((previous) => ({
+                              ...previous,
+                              files: Array.from(event.target.files || []),
+                            }))
+                          }
+                        />
+
+                        <div className="mt-2 text-xs leading-6 text-gray-500">
+                          فایل‌های وظیفه می‌توانند از همین فرم یا از بات تلگرام
+                          ثبت شوند. هر نوع فایل قابل قبول است: عکس، صوت، ویدیو،
+                          PDF، اکسل، ورد و سایر فرمت‌ها.
+                        </div>
+
+                        {taskForm.files.length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {taskForm.files.map((file) => (
+                              <span
+                                key={`${file.name}-${file.size}`}
+                                className="badge badge-outline"
+                              >
+                                {file.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end gap-2">
+                      {editingTaskId ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={resetTaskForm}
+                        >
+                          <XMarkIcon className="h-5 w-5" />
+                          انصراف
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={savingTask}
+                      >
+                        <PlusIcon className="h-5 w-5" />
+                        {savingTask
+                          ? 'در حال ذخیره...'
+                          : editingTaskId
+                            ? 'ذخیره تغییرات'
+                            : 'ثبت وظیفه برای مدیر'}
+                      </button>
+                    </div>
+                  </form>
+
+                  <div className="space-y-3">
+                    {visibleTasks.length ? (
+                      visibleTasks.map((task) => {
+                        const canCloseTask = isUserAssignedToTask(
+                          task,
+                          currentUserId,
+                        );
+
+                        return (
+                          <div
+                            key={getTaskId(task)}
+                            className="rounded-xl border border-gray-200 p-4 dark:border-gray-800"
+                          >
+                            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+                              <div className="min-w-0 flex-1">
+                                <div className="font-bold text-gray-900 dark:text-gray-100">
+                                  {task.title}
+                                </div>
+
+                                <div className="mt-1 text-sm text-gray-500">
+                                  {task.description || 'بدون توضیح'}
+                                </div>
+
+                                <div className="mt-2 text-xs text-primary">
+                                  مسئول:{' '}
+                                  {task.assignedUserIds?.length
+                                    ? task.assignedUserIds
+                                        .map((user) => getUserDisplayName(user))
+                                        .join('، ')
+                                    : 'بدون مسئول مشخص'}
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                  <span className="badge badge-outline">
+                                    {projectTaskStatusLabels[task.status] ||
+                                      task.status}
+                                  </span>
+
+                                  <span className="badge badge-outline">
+                                    {projectPriorityLabels[task.priority] ||
+                                      task.priority}
+                                  </span>
+
+                                  <span className="badge badge-ghost">
+                                    شروع: {formatDate(task.startDate)}
+                                  </span>
+
+                                  <span className="badge badge-ghost">
+                                    موعد: {formatDate(task.dueDate)}
+                                  </span>
+
+                                  {task.attachmentCount || task.files?.length ? (
+                                    <span className="badge badge-primary gap-1">
+                                      <PaperClipIcon className="h-3 w-3" />
+                                      {task.attachmentCount ||
+                                        task.files?.length}{' '}
+                                      فایل
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                {renderFiles(task.files, 'فایل‌های پیوست وظیفه')}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  className="btn btn-xs btn-outline"
+                                  onClick={() => startEditTask(task)}
+                                >
+                                  <PencilSquareIcon className="h-4 w-4" />
+                                  ویرایش
+                                </button>
+
+                                {task.status !== 'in_progress' ? (
+                                  <button
+                                    className="btn btn-xs btn-outline"
+                                    onClick={() =>
+                                      handleUpdateTaskStatus(task, 'in_progress')
+                                    }
+                                  >
+                                    شروع
+                                  </button>
+                                ) : null}
+
+                                {canCloseTask ? (
+                                  <button
+                                    className="btn btn-xs btn-success"
+                                    onClick={() =>
+                                      handleUpdateTaskStatus(task, 'done')
+                                    }
+                                  >
+                                    بستن کار
+                                  </button>
+                                ) : (
+                                  <span className="badge badge-ghost">
+                                    فقط مدیر مسئول می‌تواند این کار را ببندد
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700">
+                        وظیفه بازی برای این پروژه وجود ندارد.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <ProjectTimelineFlow
+                  items={timelineItems}
+                  formatDate={formatDate}
+                  resolveFileUrl={resolveFileUrl}
+                  formatFileSize={formatFileSize}
+                />
+              </div>
+
+              <div className="space-y-6">
+                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                  <div className="mb-4 flex items-center gap-2">
+                    <DocumentTextIcon className="h-5 w-5 text-primary" />
+
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      ثبت کار انجام‌شده
+                    </h2>
+                  </div>
+
+                  <form onSubmit={handleCreateWorkLog} className="space-y-4">
+                    <select
+                      className="select select-bordered w-full"
+                      value={workAuthorId}
+                      onChange={(event) => setWorkAuthorId(event.target.value)}
+                      required
+                    >
+                      <option value="">انتخاب مدیر انجام‌دهنده کار</option>
+
+                      {projectManagerOptions.map((manager) => (
+                        <option
+                          key={getReferenceId(manager)}
+                          value={getReferenceId(manager)}
+                        >
+                          {getUserDisplayName(manager)}
+                        </option>
+                      ))}
+                    </select>
+
+                    <textarea
+                      className="textarea textarea-bordered min-h-32 w-full"
+                      placeholder="چه کاری روی این پروژه انجام شد؟"
+                      value={workNote}
+                      onChange={(event) => setWorkNote(event.target.value)}
+                      required
+                    />
+
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      className="input input-bordered w-full"
+                      placeholder="درصد پیشرفت اختیاری، مثلاً ۴۰"
+                      value={progressPercent}
+                      onChange={(event) => setProgressPercent(event.target.value)}
+                    />
+
+                    <input
+                      type="file"
+                      className="file-input file-input-bordered w-full"
+                      onChange={(event) =>
+                        setWorkLogFile(event.target.files?.[0] || null)
+                      }
+                    />
+
+                    <button
+                      type="submit"
+                      className="btn btn-primary w-full"
+                      disabled={savingWorkLog}
+                    >
+                      {savingWorkLog ? 'در حال ثبت...' : 'ثبت کار انجام‌شده'}
+                    </button>
+                  </form>
+
+                  <div className="mt-6 space-y-3">
+                    {notes.slice(0, 5).map((note) => (
+                      <div
+                        key={getNoteId(note)}
+                        className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800"
+                      >
+                        <div className="space-y-1 text-xs text-gray-500">
+                          <div>
+                            {formatDate(note.createdAt)} · انجام‌دهنده:{' '}
+                            {getUserDisplayName(note.authorId)}
+                          </div>
+
+                          {note.registeredById &&
+                          getReferenceId(note.registeredById) !==
+                            getReferenceId(note.authorId) ? (
+                            <div>
+                              ثبت‌شده توسط:{' '}
+                              {getUserDisplayName(note.registeredById)}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+                          {note.note}
+                        </div>
+
+                        {note.progressPercent !== null &&
+                        note.progressPercent !== undefined ? (
+                          <div className="mt-2 text-xs text-primary">
+                            پیشرفت: {note.progressPercent}%
+                          </div>
+                        ) : null}
+
+                        {renderFiles(note.files, 'فایل‌های پیوست گزارش')}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                  <div className="mb-4 flex items-center gap-2">
+                    <DocumentArrowUpIcon className="h-5 w-5 text-primary" />
+
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      فایل‌های پروژه
+                    </h2>
+                  </div>
+
+                  <form onSubmit={handleUploadFile} className="space-y-4">
+                    <input
+                      type="file"
+                      className="file-input file-input-bordered w-full"
+                      onChange={(event) =>
+                        setSelectedFile(event.target.files?.[0] || null)
+                      }
+                    />
+
+                    <select
+                      className="select select-bordered w-full"
+                      value={fileCategory}
+                      onChange={(event) =>
+                        setFileCategory(event.target.value as ProjectFileCategory)
+                      }
+                    >
+                      {fileCategoryOptions.map((category) => (
+                        <option key={category} value={category}>
+                          {projectFileCategoryLabels[category]}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="submit"
+                      className="btn btn-outline w-full"
+                      disabled={uploadingFile || !selectedFile}
+                    >
+                      {uploadingFile ? 'در حال آپلود...' : 'آپلود فایل'}
+                    </button>
+                  </form>
+
+                  <div className="mt-6 space-y-3">
+                    {files.length ? (
+                      files.map((file) => (
+                        <a
+                          key={getFileId(file)}
+                          href={resolveFileUrl(file.fileUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-xl border border-gray-200 p-3 transition hover:border-primary dark:border-gray-800"
+                        >
+                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                            {file.originalName}
+                          </div>
+
+                          <div className="mt-1 text-xs text-gray-500">
+                            {file.categoryLabel ||
+                              projectFileCategoryLabels[file.category]}{' '}
+                            · {getUserDisplayName(file.uploadedBy)}
+                          </div>
+                        </a>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500 dark:border-gray-700">
+                        هنوز فایلی برای پروژه ثبت نشده است.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-2xl bg-white p-8 text-center shadow-sm dark:bg-gray-900">
+            پروژه پیدا نشد یا به آن دسترسی ندارید.
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
 };
 
 export const getServerSideProps = withAuth();

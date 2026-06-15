@@ -3,6 +3,7 @@ import {
   ApiResponse,
   CalendarEvent,
   CreateProjectNotePayload,
+  getTaskId,
   PaginationState,
   Project,
   ProjectFile,
@@ -68,6 +69,64 @@ const normalizeListResponse = (
     items: Array.isArray(apiResponse.data) ? apiResponse.data : [],
     pagination: apiResponse.pagination || defaultPagination,
   };
+};
+
+const uploadTaskFilesRequest = async (
+  projectId: string,
+  taskId: string,
+  files: File[],
+): Promise<ProjectTask> => {
+  const formData = new FormData();
+
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+
+  const response = await apiClient.post(
+    `/projects/${projectId}/tasks/${taskId}/files`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    },
+  );
+
+  return unwrapData<ProjectTask>(response.data);
+};
+
+const buildTaskRequestPayload = (payload: Partial<ProjectTaskPayload>) => {
+  const requestPayload: Record<string, unknown> = {};
+
+  if (payload.title !== undefined) {
+    requestPayload.title = payload.title;
+  }
+
+  if (payload.description !== undefined) {
+    requestPayload.description = payload.description || '';
+  }
+
+  if (payload.assignedUserIds !== undefined) {
+    requestPayload.assignedUserIds = payload.assignedUserIds || [];
+  }
+
+  if (payload.status !== undefined) {
+    requestPayload.status = payload.status;
+  }
+
+  if (payload.priority !== undefined) {
+    requestPayload.priority = payload.priority;
+  }
+
+  if (payload.startDate !== undefined) {
+    requestPayload.startDate = payload.startDate || null;
+  }
+
+  if (payload.dueDate !== undefined) {
+    requestPayload.dueDate = payload.dueDate || null;
+  }
+
+  return requestPayload;
 };
 
 export const projectService = {
@@ -192,14 +251,23 @@ export const projectService = {
     payload: ProjectTaskPayload,
   ): Promise<ProjectTask> {
     try {
-      const response = await apiClient.post(`/projects/${projectId}/tasks`, {
-        ...payload,
-        startDate: payload.startDate || null,
-        dueDate: payload.dueDate || null,
-        assignedUserIds: payload.assignedUserIds || [],
-      });
+      const response = await apiClient.post(
+        `/projects/${projectId}/tasks`,
+        buildTaskRequestPayload(payload),
+      );
 
-      return unwrapData<ProjectTask>(response.data);
+      const createdTask = unwrapData<ProjectTask>(response.data);
+      const createdTaskId = getTaskId(createdTask);
+
+      if (payload.files?.length && createdTaskId) {
+        return await uploadTaskFilesRequest(
+          projectId,
+          createdTaskId,
+          payload.files,
+        );
+      }
+
+      return createdTask;
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در ایجاد وظیفه'));
     }
@@ -211,24 +279,52 @@ export const projectService = {
     payload: Partial<ProjectTaskPayload>,
   ): Promise<ProjectTask> {
     try {
-      const requestPayload: Partial<ProjectTaskPayload> = { ...payload };
-
-      if ('startDate' in requestPayload) {
-        requestPayload.startDate = requestPayload.startDate || null;
-      }
-
-      if ('dueDate' in requestPayload) {
-        requestPayload.dueDate = requestPayload.dueDate || null;
-      }
-
       const response = await apiClient.patch(
         `/projects/${projectId}/tasks/${taskId}`,
-        requestPayload,
+        buildTaskRequestPayload(payload),
+      );
+
+      const updatedTask = unwrapData<ProjectTask>(response.data);
+
+      if (payload.files?.length) {
+        return await uploadTaskFilesRequest(projectId, taskId, payload.files);
+      }
+
+      return updatedTask;
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ویرایش وظیفه'));
+    }
+  },
+
+  async closeTask(projectId: string, taskId: string): Promise<ProjectTask> {
+    try {
+      const response = await apiClient.patch(
+        `/projects/${projectId}/tasks/${taskId}`,
+        {
+          status: 'done',
+        },
+        {
+          headers: {
+            'X-Toast-Success-Message': 'کار با موفقیت بسته شد.',
+          },
+        },
       );
 
       return unwrapData<ProjectTask>(response.data);
     } catch (error) {
-      throw new Error(unwrapMessage(error, 'خطا در ویرایش وظیفه'));
+      throw new Error(unwrapMessage(error, 'خطا در بستن کار'));
+    }
+  },
+
+  async uploadTaskFiles(
+    projectId: string,
+    taskId: string,
+    files: File[],
+  ): Promise<ProjectTask> {
+    try {
+      return await uploadTaskFilesRequest(projectId, taskId, files);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ارسال فایل برای وظیفه'));
     }
   },
 
@@ -255,20 +351,62 @@ export const projectService = {
     payload: CreateProjectNotePayload,
   ): Promise<ProjectProgressNote> {
     try {
-      const response = await apiClient.post(
-        `/projects/${projectId}/notes`,
-        payload,
-      );
+      if (payload.file) {
+        const formData = new FormData();
+
+        formData.append('note', payload.note);
+
+        if (payload.authorId) {
+          formData.append('authorId', payload.authorId);
+        }
+
+        if (
+          payload.progressPercent !== undefined &&
+          payload.progressPercent !== null
+        ) {
+          formData.append('progressPercent', String(payload.progressPercent));
+        }
+
+        if (payload.statusSnapshot) {
+          formData.append('statusSnapshot', payload.statusSnapshot);
+        }
+
+        formData.append('file', payload.file);
+
+        const response = await apiClient.post(
+          `/projects/${projectId}/notes`,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          },
+        );
+
+        return unwrapData<ProjectProgressNote>(response.data);
+      }
+
+      const response = await apiClient.post(`/projects/${projectId}/notes`, {
+        authorId: payload.authorId,
+        note: payload.note,
+        progressPercent: payload.progressPercent,
+        statusSnapshot: payload.statusSnapshot,
+      });
 
       return unwrapData<ProjectProgressNote>(response.data);
     } catch (error) {
-      throw new Error(unwrapMessage(error, 'خطا در ثبت یادداشت پروژه'));
+      throw new Error(unwrapMessage(error, 'خطا در ثبت گزارش کار'));
     }
   },
 
-  async listFiles(projectId: string): Promise<ProjectFile[]> {
+  async listFiles(
+    projectId: string,
+    params?: { standaloneOnly?: boolean },
+  ): Promise<ProjectFile[]> {
     try {
-      const response = await apiClient.get(`/projects/${projectId}/files`);
+      const response = await apiClient.get(`/projects/${projectId}/files`, {
+        params,
+      });
 
       return unwrapData<ProjectFile[]>(response.data) || [];
     } catch (error) {
@@ -281,6 +419,8 @@ export const projectService = {
     payload: {
       file: File;
       category: string;
+      progressNoteId?: string | null;
+      taskId?: string | null;
     },
   ): Promise<ProjectFile> {
     try {
@@ -288,6 +428,14 @@ export const projectService = {
 
       formData.append('file', payload.file);
       formData.append('category', payload.category || 'other');
+
+      if (payload.progressNoteId) {
+        formData.append('progressNoteId', payload.progressNoteId);
+      }
+
+      if (payload.taskId) {
+        formData.append('taskId', payload.taskId);
+      }
 
       const response = await apiClient.post(
         `/projects/${projectId}/files`,

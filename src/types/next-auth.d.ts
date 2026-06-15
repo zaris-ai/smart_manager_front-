@@ -4,55 +4,92 @@ declare module 'next-auth' {
   interface Session {
     accessToken?: string;
     refreshToken?: string;
-    accessTokenExpiresIn?: string;
-    refreshTokenExpiresIn?: string;
+    tokenType?: 'Bearer';
     accessTokenExpiresAt?: number;
-    error?: string;
-
+    refreshTokenExpiresAt?: number;
+    error?: 'RefreshAccessTokenError';
     user: {
       id: string;
-      username: string;
+      firstName?: string;
+      lastName?: string;
+      fullName?: string;
+      username?: string;
+      email?: string;
+      phone?: string;
       role?: string;
       roleLabel?: string;
-      accessLevel?: number;
-      permissions?: string[];
+      status?: string;
+      statusLabel?: string;
+      isActive?: boolean;
+      profile?: Record<string, any>;
+      managerId?: string | null;
+      language?: string;
+      direction?: string;
+      lastLoginAt?: string | null;
+      telegramUserId?: string;
+      telegramChatId?: string;
+      telegramUsername?: string;
     } & DefaultSession['user'];
   }
 
   interface User {
     id: string;
-    username: string;
-    name?: string | null;
-    email?: string | null;
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    username?: string;
+    email?: string;
+    phone?: string;
     role?: string;
     roleLabel?: string;
-    accessLevel?: number;
-    permissions?: string[];
-
-    accessToken: string;
-    refreshToken: string;
-    accessTokenExpiresIn: string;
-    refreshTokenExpiresIn: string;
-    accessTokenExpiresAt: number;
+    status?: string;
+    statusLabel?: string;
+    isActive?: boolean;
+    profile?: Record<string, any>;
+    managerId?: string | null;
+    language?: string;
+    direction?: string;
+    lastLoginAt?: string | null;
+    telegramUserId?: string;
+    telegramChatId?: string;
+    telegramUsername?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    tokenType?: 'Bearer';
+    accessTokenExpiresAt?: number;
+    refreshTokenExpiresAt?: number;
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
-    id?: string;
-    username?: string;
-    name?: string | null;
-    email?: string | null;
-    role?: string;
-    roleLabel?: string;
-    accessLevel?: number;
-    permissions?: string[];
-
+    user?: {
+      id: string;
+      firstName?: string;
+      lastName?: string;
+      fullName?: string;
+      username?: string;
+      email?: string;
+      phone?: string;
+      role?: string;
+      roleLabel?: string;
+      status?: string;
+      statusLabel?: string;
+      isActive?: boolean;
+      profile?: Record<string, any>;
+      managerId?: string | null;
+      language?: string;
+      direction?: string;
+      lastLoginAt?: string | null;
+      telegramUserId?: string;
+      telegramChatId?: string;
+      telegramUsername?: string;
+    };
     accessToken?: string;
     refreshToken?: string;
-    accessTokenExpiresIn?: string;
-    refreshTokenExpiresIn?: string;
+    tokenType?: 'Bearer';
     accessTokenExpiresAt?: number;
-    error?: string;
+    refreshTokenExpiresAt?: number;
+    error?: 'RefreshAccessTokenError';
   }
 }

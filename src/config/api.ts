@@ -1,41 +1,31 @@
-// ============================================
-// API Configuration - تنظیمات API
-// ============================================
-
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { getSession, signOut } from "next-auth/react";
-import { getLogoutUrl } from "@/utils/getLogoutUrl";
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { getSession, signOut } from 'next-auth/react';
 
 const API_BASE_URL =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8000/api"
-    : (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL);
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:4000/api/v1';
 
-type RetryableRequestConfig = InternalAxiosRequestConfig & {
-  _retry?: boolean;
-};
+let isRedirectingToLogin = false;
 
-export const apiClient = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30000,
   headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
+    'Content-Type': 'application/json',
   },
 });
-console.log(process.env.NEXT_PUBLIC_API_BASE_URL)
-apiClient.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    const publicRoutes = ["/auth/login", "/auth/signup", "/auth/refresh"];
 
-    if (publicRoutes.some((route) => config.url?.includes(route))) {
+api.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    if (typeof window === 'undefined') {
       return config;
     }
 
     const session = await getSession();
 
-    if (session?.accessToken) {
-      config.headers = config.headers ?? {};
+    if (session?.accessToken && !session.error) {
       config.headers.Authorization = `Bearer ${session.accessToken}`;
+    } else {
+      delete config.headers.Authorization;
     }
 
     return config;
@@ -43,68 +33,44 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-apiClient.interceptors.response.use(
+api.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as RetryableRequestConfig | undefined;
+  async (error: AxiosError<any>) => {
+    const status = error.response?.status;
+    const code = error.response?.data?.code;
+    const requestUrl = String(error.config?.url || '');
 
-    if (!originalRequest) {
-      return Promise.reject(error);
-    }
+    const isAuthRequest =
+      requestUrl.includes('/auth/login') ||
+      requestUrl.includes('/auth/refresh') ||
+      requestUrl.includes('/auth/logout');
 
-    const isUnauthorized = error.response?.status === 401;
-    const isRefreshRequest = originalRequest.url?.includes("/auth/refresh");
+    const shouldLogout =
+      typeof window !== 'undefined' &&
+      status === 401 &&
+      !isAuthRequest &&
+      !isRedirectingToLogin &&
+      [
+        'ACCESS_TOKEN_REQUIRED',
+        'ACCESS_TOKEN_EXPIRED',
+        'INVALID_ACCESS_TOKEN',
+        'INVALID_REFRESH_TOKEN',
+        'REFRESH_TOKEN_REQUIRED',
+        'UNAUTHORIZED',
+      ].includes(String(code || ''));
 
-    if (isUnauthorized && !originalRequest._retry && !isRefreshRequest) {
-      originalRequest._retry = true;
+    if (shouldLogout) {
+      isRedirectingToLogin = true;
 
-      try {
-        const session = await getSession();
-        const refreshToken = session?.refreshToken;
+      await signOut({
+        redirect: false,
+      });
 
-        if (!refreshToken) {
-          await signOut({ callbackUrl: getLogoutUrl() });
-          return Promise.reject(error);
-        }
-
-        const refreshResponse = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          {
-            refreshToken,
-          },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-          },
-        );
-
-        const newAccessToken = refreshResponse.data?.tokens?.accessToken;
-        const newRefreshToken = refreshResponse.data?.tokens?.refreshToken;
-
-        if (!newAccessToken) {
-          await signOut({ callbackUrl: getLogoutUrl() });
-          return Promise.reject(error);
-        }
-
-        originalRequest.headers = originalRequest.headers ?? {};
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-
-        if (newRefreshToken) {
-          // NextAuth session is not directly mutable from here.
-          // If you want real token rotation persistence, handle it in NextAuth jwt/session callbacks.
-        }
-
-        return apiClient(originalRequest);
-      } catch (refreshError) {
-        await signOut({ callbackUrl: getLogoutUrl() });
-        return Promise.reject(refreshError);
-      }
+      window.location.replace('/auth/login?expired=1');
     }
 
     return Promise.reject(error);
   },
 );
 
-export default apiClient;
+export default api;

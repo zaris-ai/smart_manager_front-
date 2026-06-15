@@ -1,45 +1,62 @@
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
-const backendBaseUrl =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'http://127.0.0.1:4000/api/v1';
-
-type BackendAuthUser = {
+type BackendUser = {
   id: string;
-  username: string;
-  fullName?: string;
+  _id?: string;
   firstName?: string;
   lastName?: string;
-  email?: string | null;
+  fullName?: string;
+  username?: string;
+  email?: string;
+  phone?: string;
   role?: string;
   roleLabel?: string;
-  accessLevel?: number;
-  permissions?: string[];
+  status?: string;
+  statusLabel?: string;
+  isActive?: boolean;
+  profile?: Record<string, any>;
+  managerId?: string | null;
+  language?: string;
+  direction?: string;
+  lastLoginAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  telegramUserId?: string;
+  telegramChatId?: string;
+  telegramUsername?: string;
 };
 
 type BackendTokens = {
   accessToken: string;
   refreshToken: string;
-  tokenType?: string;
-  accessTokenExpiresIn?: string;
-  refreshTokenExpiresIn?: string;
+  tokenType: 'Bearer';
+  accessTokenExpiresIn: string;
+  refreshTokenExpiresIn: string;
 };
 
-type BackendAuthResponse = {
+type BackendLoginResponse = {
   success: boolean;
   message?: string;
+  code?: string;
   data?: {
-    user?: BackendAuthUser;
-    tokens?: BackendTokens;
+    user: BackendUser;
+    tokens: BackendTokens;
   };
 };
 
-const parseDurationToMs = (duration?: string): number => {
-  if (!duration) return 15 * 60 * 1000;
+const backendBaseUrl =
+  process.env.API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  'http://127.0.0.1:4000/api/v1';
 
-  const normalized = duration.trim();
+const parseDurationToMs = (
+  value: string | undefined,
+  fallbackMs: number,
+): number => {
+  if (!value) return fallbackMs;
+
+  const normalized = String(value).trim();
 
   if (/^\d+$/.test(normalized)) {
     return Number(normalized) * 1000;
@@ -47,9 +64,9 @@ const parseDurationToMs = (duration?: string): number => {
 
   const match = normalized.match(/^(\d+)(ms|s|m|h|d)$/);
 
-  if (!match) return 15 * 60 * 1000;
+  if (!match) return fallbackMs;
 
-  const value = Number(match[1]);
+  const amount = Number(match[1]);
   const unit = match[2];
 
   const multipliers: Record<string, number> = {
@@ -60,52 +77,16 @@ const parseDurationToMs = (duration?: string): number => {
     d: 24 * 60 * 60 * 1000,
   };
 
-  return value * multipliers[unit];
+  return amount * multipliers[unit];
 };
 
-const getJwtExpiresAt = (
-  token?: string,
-  fallbackExpiresIn?: string,
-): number => {
-  if (!token) {
-    return Date.now() + parseDurationToMs(fallbackExpiresIn);
-  }
+const normalizeUser = (user: BackendUser): BackendUser => {
+  const id = user.id || user._id || '';
 
-  try {
-    const [, payload] = token.split('.');
-
-    if (!payload) {
-      return Date.now() + parseDurationToMs(fallbackExpiresIn);
-    }
-
-    const decodedPayload = JSON.parse(
-      Buffer.from(payload, 'base64url').toString('utf8'),
-    ) as {
-      exp?: number;
-    };
-
-    if (decodedPayload.exp) {
-      return decodedPayload.exp * 1000;
-    }
-
-    return Date.now() + parseDurationToMs(fallbackExpiresIn);
-  } catch {
-    return Date.now() + parseDurationToMs(fallbackExpiresIn);
-  }
-};
-
-const readJsonResponse = async <T>(response: Response): Promise<T> => {
-  const text = await response.text();
-
-  if (!text) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error('پاسخ سرور احراز هویت JSON معتبر نیست.');
-  }
+  return {
+    ...user,
+    id,
+  };
 };
 
 const refreshAccessToken = async (token: any) => {
@@ -113,6 +94,8 @@ const refreshAccessToken = async (token: any) => {
     if (!token.refreshToken) {
       return {
         ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
         error: 'RefreshAccessTokenError',
       };
     }
@@ -121,68 +104,46 @@ const refreshAccessToken = async (token: any) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'application/json',
       },
       body: JSON.stringify({
         refreshToken: token.refreshToken,
       }),
     });
 
-    const responseData = await readJsonResponse<BackendAuthResponse>(response);
+    const responseData = (await response.json().catch(() => null)) as
+      | BackendLoginResponse
+      | null;
 
-    if (!response.ok || !responseData.success) {
-      throw new Error(responseData.message || 'خطا در تمدید نشست کاربر.');
+    if (!response.ok || !responseData?.success || !responseData.data?.tokens) {
+      return {
+        ...token,
+        accessToken: undefined,
+        refreshToken: undefined,
+        error: 'RefreshAccessTokenError',
+      };
     }
 
-    const refreshedTokens = responseData.data?.tokens;
-    const refreshedUser = responseData.data?.user;
-
-    if (!refreshedTokens?.accessToken || !refreshedTokens?.refreshToken) {
-      throw new Error('توکن جدید از سرور دریافت نشد.');
-    }
+    const { user, tokens } = responseData.data;
 
     return {
       ...token,
-
-      id: refreshedUser?.id || token.id,
-      username: refreshedUser?.username || token.username,
-      name:
-        refreshedUser?.fullName ||
-        [refreshedUser?.firstName, refreshedUser?.lastName]
-          .filter(Boolean)
-          .join(' ') ||
-        token.name,
-      email: refreshedUser?.email ?? token.email,
-      role: refreshedUser?.role || token.role,
-      roleLabel: refreshedUser?.roleLabel || token.roleLabel,
-      accessLevel: refreshedUser?.accessLevel ?? token.accessLevel,
-      permissions: refreshedUser?.permissions || token.permissions || [],
-
-      accessToken: refreshedTokens.accessToken,
-
-      /**
-       * Backend rotates refresh tokens.
-       * Always save the new refresh token.
-       */
-      refreshToken: refreshedTokens.refreshToken,
-
-      accessTokenExpiresIn:
-        refreshedTokens.accessTokenExpiresIn || token.accessTokenExpiresIn,
-      refreshTokenExpiresIn:
-        refreshedTokens.refreshTokenExpiresIn || token.refreshTokenExpiresIn,
-
-      accessTokenExpiresAt: getJwtExpiresAt(
-        refreshedTokens.accessToken,
-        refreshedTokens.accessTokenExpiresIn,
-      ),
-
+      user: user ? normalizeUser(user) : token.user,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken || token.refreshToken,
+      tokenType: tokens.tokenType,
+      accessTokenExpiresAt:
+        Date.now() +
+        parseDurationToMs(tokens.accessTokenExpiresIn, 15 * 60 * 1000),
+      refreshTokenExpiresAt:
+        Date.now() +
+        parseDurationToMs(tokens.refreshTokenExpiresIn, 7 * 24 * 60 * 60 * 1000),
       error: undefined,
     };
-  } catch (error) {
-    console.error('[NextAuth] refreshAccessToken failed:', error);
-
+  } catch {
     return {
       ...token,
+      accessToken: undefined,
+      refreshToken: undefined,
       error: 'RefreshAccessTokenError',
     };
   }
@@ -193,11 +154,6 @@ export const authOptions: NextAuthOptions = {
 
   session: {
     strategy: 'jwt',
-
-    /**
-     * NextAuth session should live at least as long as backend refresh token.
-     * Backend access token is short-lived, refresh token is the real session.
-     */
     maxAge: 7 * 24 * 60 * 60,
   },
 
@@ -207,27 +163,29 @@ export const authOptions: NextAuthOptions = {
 
   pages: {
     signIn: '/auth/login',
-    error: '/auth/error',
+    error: '/auth/login',
   },
 
   providers: [
     CredentialsProvider({
-      id: 'credentials',
       name: 'Credentials',
 
       credentials: {
         username: {
-          label: 'نام کاربری',
+          label: 'Username',
           type: 'text',
         },
         password: {
-          label: 'رمز عبور',
+          label: 'Password',
           type: 'password',
         },
       },
 
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
+        const username = String(credentials?.username || '').trim();
+        const password = String(credentials?.password || '');
+
+        if (!username || !password) {
           throw new Error('نام کاربری و رمز عبور الزامی است.');
         }
 
@@ -235,100 +193,109 @@ export const authOptions: NextAuthOptions = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Accept: 'application/json',
           },
           body: JSON.stringify({
-            username: String(credentials.username),
-            password: String(credentials.password),
+            username,
+            email: username,
+            password,
           }),
         });
 
-        const responseData = await readJsonResponse<BackendAuthResponse>(
-          response,
-        );
+        const responseData = (await response.json().catch(() => null)) as
+          | BackendLoginResponse
+          | null;
 
-        if (!response.ok || !responseData.success) {
+        if (!response.ok || !responseData?.success || !responseData.data) {
           throw new Error(
-            responseData.message || 'نام کاربری یا رمز عبور اشتباه است.',
+            responseData?.message || 'نام کاربری یا رمز عبور اشتباه است.',
           );
         }
 
-        const backendUser = responseData.data?.user;
-        const tokens = responseData.data?.tokens;
+        const { user, tokens } = responseData.data;
 
-        if (!backendUser?.id) {
-          throw new Error('شناسه کاربر از سرویس احراز هویت دریافت نشد.');
-        }
-
-        if (!tokens?.accessToken || !tokens?.refreshToken) {
-          throw new Error('توکن‌های احراز هویت از سرور دریافت نشدند.');
-        }
+        const normalizedUser = normalizeUser(user);
 
         return {
-          id: backendUser.id,
-          username: backendUser.username || String(credentials.username),
-          name:
-            backendUser.fullName ||
-            [backendUser.firstName, backendUser.lastName]
-              .filter(Boolean)
-              .join(' ') ||
-            backendUser.username ||
-            String(credentials.username),
-          email: backendUser.email || null,
-          role: backendUser.role,
-          roleLabel: backendUser.roleLabel,
-          accessLevel: backendUser.accessLevel,
-          permissions: backendUser.permissions || [],
-
+          ...normalizedUser,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
-          accessTokenExpiresIn: tokens.accessTokenExpiresIn || '15m',
-          refreshTokenExpiresIn: tokens.refreshTokenExpiresIn || '7d',
-          accessTokenExpiresAt: getJwtExpiresAt(
-            tokens.accessToken,
-            tokens.accessTokenExpiresIn,
-          ),
-        };
+          tokenType: tokens.tokenType,
+          accessTokenExpiresAt:
+            Date.now() +
+            parseDurationToMs(tokens.accessTokenExpiresIn, 15 * 60 * 1000),
+          refreshTokenExpiresAt:
+            Date.now() +
+            parseDurationToMs(
+              tokens.refreshTokenExpiresIn,
+              7 * 24 * 60 * 60 * 1000,
+            ),
+        } as any;
       },
     }),
   ],
 
   callbacks: {
     async jwt({ token, user }) {
-      /**
-       * First login.
-       */
       if (user) {
-        token.id = user.id;
-        token.username = user.username;
-        token.name = user.name;
-        token.email = user.email;
-        token.role = user.role;
-        token.roleLabel = user.roleLabel;
-        token.accessLevel = user.accessLevel;
-        token.permissions = user.permissions || [];
+        const authUser = user as any;
 
-        token.accessToken = user.accessToken;
-        token.refreshToken = user.refreshToken;
-        token.accessTokenExpiresIn = user.accessTokenExpiresIn;
-        token.refreshTokenExpiresIn = user.refreshTokenExpiresIn;
-        token.accessTokenExpiresAt = user.accessTokenExpiresAt;
-        token.error = undefined;
-
-        return token;
+        return {
+          ...token,
+          user: {
+            id: authUser.id,
+            firstName: authUser.firstName,
+            lastName: authUser.lastName,
+            fullName: authUser.fullName,
+            username: authUser.username,
+            email: authUser.email,
+            phone: authUser.phone,
+            role: authUser.role,
+            roleLabel: authUser.roleLabel,
+            status: authUser.status,
+            statusLabel: authUser.statusLabel,
+            isActive: authUser.isActive,
+            profile: authUser.profile,
+            managerId: authUser.managerId,
+            language: authUser.language,
+            direction: authUser.direction,
+            lastLoginAt: authUser.lastLoginAt,
+            telegramUserId: authUser.telegramUserId,
+            telegramChatId: authUser.telegramChatId,
+            telegramUsername: authUser.telegramUsername,
+          },
+          accessToken: authUser.accessToken,
+          refreshToken: authUser.refreshToken,
+          tokenType: authUser.tokenType,
+          accessTokenExpiresAt: authUser.accessTokenExpiresAt,
+          refreshTokenExpiresAt: authUser.refreshTokenExpiresAt,
+          error: undefined,
+        };
       }
 
-      const accessTokenExpiresAt =
-        typeof token.accessTokenExpiresAt === 'number'
-          ? token.accessTokenExpiresAt
-          : 0;
+      const accessTokenExpiresAt = Number(token.accessTokenExpiresAt || 0);
+      const refreshTokenExpiresAt = Number(token.refreshTokenExpiresAt || 0);
 
-      /**
-       * Refresh 30 seconds before backend access token expires.
-       */
-      const shouldRefresh = Date.now() >= accessTokenExpiresAt - 30_000;
+      if (!token.accessToken || !token.refreshToken) {
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          error: 'RefreshAccessTokenError',
+        };
+      }
 
-      if (!shouldRefresh) {
+      if (refreshTokenExpiresAt && Date.now() >= refreshTokenExpiresAt) {
+        return {
+          ...token,
+          accessToken: undefined,
+          refreshToken: undefined,
+          error: 'RefreshAccessTokenError',
+        };
+      }
+
+      const refreshWindowMs = 30 * 1000;
+
+      if (accessTokenExpiresAt && Date.now() < accessTokenExpiresAt - refreshWindowMs) {
         return token;
       }
 
@@ -336,23 +303,19 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string;
-        session.user.username = token.username as string;
-        session.user.name = token.name as string;
-        session.user.email = token.email as string;
-        session.user.role = token.role as string;
-        session.user.roleLabel = token.roleLabel as string;
-        session.user.accessLevel = token.accessLevel as number;
-        session.user.permissions = token.permissions as string[];
-      }
+      const tokenUser = token.user as any;
 
-      session.accessToken = token.accessToken as string;
-      session.refreshToken = token.refreshToken as string;
-      session.accessTokenExpiresIn = token.accessTokenExpiresIn as string;
-      session.refreshTokenExpiresIn = token.refreshTokenExpiresIn as string;
-      session.accessTokenExpiresAt = token.accessTokenExpiresAt as number;
-      session.error = token.error as string | undefined;
+      session.user = {
+        ...session.user,
+        ...tokenUser,
+      };
+
+      (session as any).accessToken = token.accessToken;
+      (session as any).refreshToken = token.refreshToken;
+      (session as any).tokenType = token.tokenType;
+      (session as any).accessTokenExpiresAt = token.accessTokenExpiresAt;
+      (session as any).refreshTokenExpiresAt = token.refreshTokenExpiresAt;
+      (session as any).error = token.error;
 
       return session;
     },
