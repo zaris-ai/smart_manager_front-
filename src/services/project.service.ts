@@ -71,6 +71,85 @@ const normalizeListResponse = (
   };
 };
 
+const getFileTaskId = (file: ProjectFile): string => {
+  const taskRef = file.taskId as unknown;
+
+  if (!taskRef) return '';
+
+  if (typeof taskRef === 'string') return taskRef;
+
+  const taskObject = taskRef as {
+    id?: string;
+    _id?: string;
+  };
+
+  return taskObject.id || taskObject._id || '';
+};
+
+const attachFilesToTasks = (
+  tasks: ProjectTask[],
+  files: ProjectFile[],
+): ProjectTask[] => {
+  const filesByTaskId = files.reduce<Record<string, ProjectFile[]>>(
+    (acc, file) => {
+      const taskId = getFileTaskId(file);
+
+      if (!taskId) return acc;
+
+      if (!acc[taskId]) acc[taskId] = [];
+
+      acc[taskId].push(file);
+
+      return acc;
+    },
+    {},
+  );
+
+  return tasks.map((task) => {
+    const taskId = getTaskId(task);
+    const currentFiles = Array.isArray(task.files) ? task.files : [];
+    const attachedFiles = filesByTaskId[taskId] || [];
+
+    const mergedFilesMap = new Map<string, ProjectFile>();
+
+    [...currentFiles, ...attachedFiles].forEach((file) => {
+      const fileKey = file.id || file._id || file.fileUrl || file.fileName;
+
+      if (fileKey) {
+        mergedFilesMap.set(fileKey, file);
+      }
+    });
+
+    const mergedFiles = Array.from(mergedFilesMap.values());
+
+    return {
+      ...task,
+      files: mergedFiles,
+      attachmentCount: mergedFiles.length,
+    };
+  });
+};
+
+const fetchProjectFiles = async (projectId: string): Promise<ProjectFile[]> => {
+  const response = await apiClient.get(`/projects/${projectId}/files`, {
+    params: {
+      standaloneOnly: false,
+    },
+  });
+
+  return unwrapData<ProjectFile[]>(response.data) || [];
+};
+
+const attachProjectFilesToTask = async (
+  projectId: string,
+  task: ProjectTask,
+): Promise<ProjectTask> => {
+  const files = await fetchProjectFiles(projectId);
+  const [taskWithFiles] = attachFilesToTasks([task], files);
+
+  return taskWithFiles || task;
+};
+
 const uploadTaskFilesRequest = async (
   projectId: string,
   taskId: string,
@@ -92,7 +171,9 @@ const uploadTaskFilesRequest = async (
     },
   );
 
-  return unwrapData<ProjectTask>(response.data);
+  const task = unwrapData<ProjectTask>(response.data);
+
+  return attachProjectFilesToTask(projectId, task);
 };
 
 const buildTaskRequestPayload = (payload: Partial<ProjectTaskPayload>) => {
@@ -238,9 +319,14 @@ export const projectService = {
 
   async listTasks(projectId: string): Promise<ProjectTask[]> {
     try {
-      const response = await apiClient.get(`/projects/${projectId}/tasks`);
+      const [tasksResponse, files] = await Promise.all([
+        apiClient.get(`/projects/${projectId}/tasks`),
+        fetchProjectFiles(projectId).catch(() => []),
+      ]);
 
-      return unwrapData<ProjectTask[]>(response.data) || [];
+      const tasks = unwrapData<ProjectTask[]>(tasksResponse.data) || [];
+
+      return attachFilesToTasks(tasks, files);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در دریافت وظایف پروژه'));
     }
@@ -267,7 +353,7 @@ export const projectService = {
         );
       }
 
-      return createdTask;
+      return await attachProjectFilesToTask(projectId, createdTask);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در ایجاد وظیفه'));
     }
@@ -290,7 +376,7 @@ export const projectService = {
         return await uploadTaskFilesRequest(projectId, taskId, payload.files);
       }
 
-      return updatedTask;
+      return await attachProjectFilesToTask(projectId, updatedTask);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در ویرایش وظیفه'));
     }
@@ -310,7 +396,9 @@ export const projectService = {
         },
       );
 
-      return unwrapData<ProjectTask>(response.data);
+      const task = unwrapData<ProjectTask>(response.data);
+
+      return await attachProjectFilesToTask(projectId, task);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در بستن کار'));
     }
