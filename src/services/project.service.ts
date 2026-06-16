@@ -442,7 +442,7 @@ export const projectService = {
       if (payload.file) {
         const formData = new FormData();
 
-        formData.append('note', payload.note);
+        formData.append('note', payload.note || '');
 
         if (payload.authorId) {
           formData.append('authorId', payload.authorId);
@@ -476,7 +476,7 @@ export const projectService = {
 
       const response = await apiClient.post(`/projects/${projectId}/notes`, {
         authorId: payload.authorId,
-        note: payload.note,
+        note: payload.note || '',
         progressPercent: payload.progressPercent,
         statusSnapshot: payload.statusSnapshot,
       });

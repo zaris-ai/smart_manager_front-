@@ -1,6 +1,9 @@
 export type UserRole = 'manager' | 'employee';
 
 export type ProjectStatus =
+  | 'negotiating'
+  | 'proposal_drafting'
+  | 'contract_signing'
   | 'planning'
   | 'active'
   | 'on_hold'
@@ -25,6 +28,11 @@ export type ProjectFileCategory =
   | 'delivery'
   | 'task_attachment'
   | 'other';
+
+export type ProjectFileTranscriptionStatus =
+  | 'not_applicable'
+  | 'completed'
+  | 'failed';
 
 export type ApiResponse<T> = {
   success?: boolean;
@@ -131,6 +139,12 @@ export type ProjectFile = {
   fileSize?: number;
   category: ProjectFileCategory;
   categoryLabel?: string;
+  transcriptionStatus?: ProjectFileTranscriptionStatus;
+  transcriptionText?: string;
+  transcriptionError?: string;
+  transcriptionModel?: string;
+  transcriptionLanguage?: string;
+  transcribedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -177,7 +191,7 @@ export type ProjectTaskPayload = {
 
 export type CreateProjectNotePayload = {
   authorId?: string;
-  note: string;
+  note?: string;
   progressPercent?: number | null;
   statusSnapshot?: string;
   file?: File | null;
@@ -210,6 +224,9 @@ export type ProjectImportResult = {
 };
 
 export const projectStatusLabels: Record<ProjectStatus, string> = {
+  negotiating: 'در حال مذاکره',
+  proposal_drafting: 'تدوین پروپوزال',
+  contract_signing: 'عقد قرارداد',
   planning: 'برنامه‌ریزی',
   active: 'فعال',
   on_hold: 'متوقف موقت',

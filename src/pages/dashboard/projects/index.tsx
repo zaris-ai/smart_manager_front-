@@ -26,6 +26,9 @@ import { useEffect, useMemo, useState } from 'react';
 const PAGE_LIMIT = 20;
 
 const statusBadgeClass: Record<ProjectStatus, string> = {
+  negotiating: 'badge-secondary',
+  proposal_drafting: 'badge-accent',
+  contract_signing: 'badge-info',
   planning: 'badge-info',
   active: 'badge-success',
   on_hold: 'badge-warning',

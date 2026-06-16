@@ -61,6 +61,24 @@ const statusVisuals: Record<
     activeClassName: string;
   }
 > = {
+  negotiating: {
+    title: 'در حال مذاکره',
+    description: 'پروژه در مرحله مذاکره با مشتری است.',
+    className: 'border-violet-200 bg-violet-50 text-violet-800',
+    activeClassName: 'ring-violet-500 border-violet-500 bg-violet-100',
+  },
+  proposal_drafting: {
+    title: 'تدوین پروپوزال',
+    description: 'پیشنهاد فنی یا مالی پروژه در حال آماده‌سازی است.',
+    className: 'border-cyan-200 bg-cyan-50 text-cyan-800',
+    activeClassName: 'ring-cyan-500 border-cyan-500 bg-cyan-100',
+  },
+  contract_signing: {
+    title: 'عقد قرارداد',
+    description: 'پروژه در مرحله نهایی‌سازی و امضای قرارداد است.',
+    className: 'border-teal-200 bg-teal-50 text-teal-800',
+    activeClassName: 'ring-teal-500 border-teal-500 bg-teal-100',
+  },
   planning: {
     title: 'برنامه‌ریزی',
     description: 'پروژه هنوز وارد اجرا نشده است.',
@@ -427,7 +445,7 @@ export const ProjectFormModal = ({
                       وضعیت پروژه
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       {Object.keys(projectStatusLabels).map((value) => {
                         const status = value as ProjectStatus;
                         const visual = statusVisuals[status];

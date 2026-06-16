@@ -76,6 +76,20 @@ import {
     work_report: 'badge-primary',
   };
   
+  const isAudioProjectFile = (file?: ProjectFile | null): boolean => {
+    if (!file) return false;
+
+    const fileType = String(file.fileType || '').toLowerCase();
+    const fileName = String(file.originalName || file.fileName || '').toLowerCase();
+
+    return (
+      fileType.startsWith('audio/') ||
+      fileType === 'video/webm' ||
+      fileType === 'video/mp4' ||
+      /\.(flac|mp3|mp4|mpeg|mpga|m4a|ogg|wav|webm)$/.test(fileName)
+    );
+  };
+
   const getNodeBorderClass = (type: TimelineFlowItemType): string => {
     switch (type) {
       case 'project_start':
@@ -305,25 +319,56 @@ import {
                   </div>
   
                   <div className="space-y-2">
-                    {selectedItem.files.map((file) => (
-                      <a
-                        key={getFileId(file)}
-                        href={resolveFileUrl(file.fileUrl)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs transition hover:border-primary dark:border-gray-700 dark:bg-gray-900"
-                      >
-                        <span className="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100">
-                          {file.originalName}
-                        </span>
-  
-                        <span className="shrink-0 text-gray-500">
-                          {file.categoryLabel ||
-                            projectFileCategoryLabels[file.category]}{' '}
-                          · {formatFileSize(file.fileSize)}
-                        </span>
-                      </a>
-                    ))}
+                    {selectedItem.files.map((file) => {
+                      const fileUrl = resolveFileUrl(file.fileUrl);
+                      const isAudio = isAudioProjectFile(file);
+
+                      return (
+                        <div
+                          key={getFileId(file)}
+                          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs dark:border-gray-700 dark:bg-gray-900"
+                        >
+                          <a
+                            href={fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center justify-between gap-3 transition hover:text-primary"
+                          >
+                            <span className="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100">
+                              {file.originalName}
+                            </span>
+
+                            <span className="shrink-0 text-gray-500">
+                              {file.categoryLabel ||
+                                projectFileCategoryLabels[file.category]}{' '}
+                              · {formatFileSize(file.fileSize)}
+                            </span>
+                          </a>
+
+                          {isAudio ? (
+                            <audio
+                              controls
+                              preload="none"
+                              src={fileUrl}
+                              className="mt-3 w-full"
+                            />
+                          ) : null}
+
+                          {file.transcriptionText ? (
+                            <div className="mt-3 rounded-lg bg-primary/5 p-3 leading-6 text-gray-700 dark:text-gray-200">
+                              <div className="mb-1 font-bold text-primary">
+                                متن تبدیل‌شده از صوت
+                              </div>
+                              {file.transcriptionText}
+                            </div>
+                          ) : file.transcriptionStatus === 'failed' ? (
+                            <div className="mt-3 rounded-lg bg-error/10 p-3 leading-6 text-error">
+                              تبدیل صوت به متن انجام نشد: {file.transcriptionError || 'خطای نامشخص'}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}

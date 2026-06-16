@@ -35,15 +35,18 @@ import {
   DocumentArrowUpIcon,
   DocumentTextIcon,
   FlagIcon,
+  MicrophoneIcon,
   PaperClipIcon,
   PencilSquareIcon,
   PlusIcon,
+  SpeakerWaveIcon,
+  StopCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 type TimelineItem = TimelineFlowItem;
 
@@ -123,7 +126,7 @@ const getBackendOrigin = (): string => {
   const apiBaseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api/v1';
 
-  return apiBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
+  return apiBaseUrl.replace(/\/api(?:\/v\d+)?\/?$/, '').replace(/\/$/, '');
 };
 
 const resolveFileUrl = (fileUrl: string): string => {
@@ -145,6 +148,63 @@ const formatFileSize = (value?: number): string => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const isAudioProjectFile = (file?: ProjectFile | null): boolean => {
+  if (!file) return false;
+
+  const fileType = String(file.fileType || '').toLowerCase();
+  const fileName = String(file.originalName || file.fileName || '').toLowerCase();
+
+  return (
+    fileType.startsWith('audio/') ||
+    fileType === 'video/webm' ||
+    fileType === 'video/mp4' ||
+    /\.(flac|mp3|mp4|mpeg|mpga|m4a|ogg|wav|webm)$/.test(fileName)
+  );
+};
+
+const isAudioBrowserFile = (file?: File | null): boolean => {
+  if (!file) return false;
+
+  return (
+    file.type.startsWith('audio/') ||
+    file.type === 'video/webm' ||
+    file.type === 'video/mp4' ||
+    /\.(flac|mp3|mp4|mpeg|mpga|m4a|ogg|wav|webm)$/i.test(file.name)
+  );
+};
+
+const getSupportedAudioMimeType = (): string => {
+  if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
+    return '';
+  }
+
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
+  ];
+
+  return candidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || '';
+};
+
+const getRecordedAudioExtension = (mimeType: string): string => {
+  if (mimeType.includes('ogg')) return 'ogg';
+  if (mimeType.includes('mp4')) return 'm4a';
+
+  return 'webm';
+};
+
+const buildRecordedAudioFile = (blob: Blob, prefix: string): File => {
+  const mimeType = blob.type || 'audio/webm';
+  const extension = getRecordedAudioExtension(mimeType);
+
+  return new File([blob], `${prefix}-${Date.now()}.${extension}`, {
+    type: mimeType,
+  });
+};
+
 const renderFiles = (
   attachedFiles?: ProjectFile[],
   title = 'فایل‌های پیوست',
@@ -155,25 +215,52 @@ const renderFiles = (
     <div className="mt-3 rounded-lg border border-primary/10 bg-primary/5 p-3">
       <div className="mb-2 text-xs font-bold text-primary">{title}</div>
 
-      <div className="space-y-2">
-        {attachedFiles.map((file) => (
-          <a
-            key={getFileId(file)}
-            href={resolveFileUrl(file.fileUrl)}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs transition hover:border-primary dark:border-gray-700 dark:bg-gray-900"
-          >
-            <span className="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100">
-              {file.originalName}
-            </span>
+      <div className="space-y-3">
+        {attachedFiles.map((file) => {
+          const fileUrl = resolveFileUrl(file.fileUrl);
+          const isAudio = isAudioProjectFile(file);
 
-            <span className="shrink-0 text-gray-500">
-              {file.categoryLabel || projectFileCategoryLabels[file.category]} ·{' '}
-              {formatFileSize(file.fileSize)}
-            </span>
-          </a>
-        ))}
+          return (
+            <div
+              key={getFileId(file)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs dark:border-gray-700 dark:bg-gray-900"
+            >
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between gap-3 transition hover:text-primary"
+              >
+                <span className="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100">
+                  {file.originalName}
+                </span>
+
+                <span className="shrink-0 text-gray-500">
+                  {file.categoryLabel || projectFileCategoryLabels[file.category]} ·{' '}
+                  {formatFileSize(file.fileSize)}
+                </span>
+              </a>
+
+              {isAudio ? (
+                <audio controls preload="none" src={fileUrl} className="mt-3 w-full" />
+              ) : null}
+
+              {file.transcriptionText ? (
+                <div className="mt-3 rounded-lg bg-base-200/70 p-3 leading-6 text-base-content/75">
+                  <div className="mb-1 flex items-center gap-1 font-bold text-primary">
+                    <SpeakerWaveIcon className="h-4 w-4" />
+                    متن تبدیل‌شده از صوت
+                  </div>
+                  {file.transcriptionText}
+                </div>
+              ) : file.transcriptionStatus === 'failed' ? (
+                <div className="mt-3 rounded-lg bg-error/10 p-3 leading-6 text-error">
+                  تبدیل صوت به متن انجام نشد: {file.transcriptionError || 'خطای نامشخص'}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -211,6 +298,11 @@ const DashboardProjectDetailsPage = () => {
 
   const [fileCategory, setFileCategory] = useState<ProjectFileCategory>('other');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const taskRecorderRef = useRef<MediaRecorder | null>(null);
+  const workLogRecorderRef = useRef<MediaRecorder | null>(null);
+  const [recordingTaskAudio, setRecordingTaskAudio] = useState(false);
+  const [recordingWorkLogAudio, setRecordingWorkLogAudio] = useState(false);
 
   const visibleTasks = useMemo(() => {
     return tasks.filter((task) => task.status !== 'done');
@@ -541,6 +633,90 @@ const DashboardProjectDetailsPage = () => {
     });
   };
 
+  const startAudioRecording = async (target: 'task' | 'workLog') => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setError('مرورگر شما امکان ضبط صدا را پشتیبانی نمی‌کند.');
+      return;
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      setError('مرورگر شما MediaRecorder را پشتیبانی نمی‌کند.');
+      return;
+    }
+
+    try {
+      setError('');
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks: BlobPart[] = [];
+      const mimeType = getSupportedAudioMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+
+        const blob = new Blob(chunks, {
+          type: recorder.mimeType || mimeType || 'audio/webm',
+        });
+
+        const audioFile = buildRecordedAudioFile(
+          blob,
+          target === 'task' ? 'task-audio' : 'project-report-audio',
+        );
+
+        if (target === 'task') {
+          setTaskForm((previous) => ({
+            ...previous,
+            files: [...previous.files, audioFile],
+          }));
+        } else {
+          setWorkLogFile(audioFile);
+        }
+      };
+
+      if (target === 'task') {
+        taskRecorderRef.current = recorder;
+        setRecordingTaskAudio(true);
+      } else {
+        workLogRecorderRef.current = recorder;
+        setRecordingWorkLogAudio(true);
+      }
+
+      recorder.start();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'اجازه دسترسی به میکروفون داده نشد یا ضبط صدا شروع نشد.',
+      );
+    }
+  };
+
+  const stopAudioRecording = (target: 'task' | 'workLog') => {
+    const recorder =
+      target === 'task' ? taskRecorderRef.current : workLogRecorderRef.current;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+
+    if (target === 'task') {
+      taskRecorderRef.current = null;
+      setRecordingTaskAudio(false);
+    } else {
+      workLogRecorderRef.current = null;
+      setRecordingWorkLogAudio(false);
+    }
+  };
+
   const handleSubmitTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -587,7 +763,14 @@ const DashboardProjectDetailsPage = () => {
 
     const form = event.currentTarget;
 
-    if (!projectId || !workNote.trim()) return;
+    const workLogHasAudio = isAudioBrowserFile(workLogFile);
+
+    if (!projectId) return;
+
+    if (!workNote.trim() && !workLogHasAudio) {
+      setError('برای ثبت گزارش، متن گزارش یا فایل صوتی ضبط‌شده الزامی است.');
+      return;
+    }
 
     if (!workAuthorId) {
       setError('برای ثبت کار انجام‌شده، انتخاب مدیر انجام‌دهنده الزامی است.');
@@ -932,22 +1115,44 @@ const DashboardProjectDetailsPage = () => {
                       />
 
                       <div className="lg:col-span-2">
-                        <input
-                          type="file"
-                          multiple
-                          className="file-input file-input-bordered w-full"
-                          onChange={(event) =>
-                            setTaskForm((previous) => ({
-                              ...previous,
-                              files: Array.from(event.target.files || []),
-                            }))
-                          }
-                        />
+                        <div className="flex flex-col gap-2 lg:flex-row">
+                          <input
+                            type="file"
+                            multiple
+                            className="file-input file-input-bordered w-full"
+                            onChange={(event) =>
+                              setTaskForm((previous) => ({
+                                ...previous,
+                                files: Array.from(event.target.files || []),
+                              }))
+                            }
+                          />
+
+                          {recordingTaskAudio ? (
+                            <button
+                              type="button"
+                              className="btn btn-error shrink-0"
+                              onClick={() => stopAudioRecording('task')}
+                            >
+                              <StopCircleIcon className="h-5 w-5" />
+                              توقف ضبط
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-outline shrink-0"
+                              onClick={() => startAudioRecording('task')}
+                            >
+                              <MicrophoneIcon className="h-5 w-5" />
+                              ضبط صوت
+                            </button>
+                          )}
+                        </div>
 
                         <div className="mt-2 text-xs leading-6 text-gray-500">
-                          فایل‌های وظیفه می‌توانند از همین فرم یا از بات تلگرام
-                          ثبت شوند. هر نوع فایل قابل قبول است: عکس، صوت، ویدیو،
-                          PDF، اکسل، ورد و سایر فرمت‌ها.
+                          فایل‌های وظیفه می‌توانند از همین فرم، ضبط مستقیم صوت یا
+                          بات تلگرام ثبت شوند. اگر فایل صوتی ارسال شود، سامانه
+                          آن را با OpenAI به متن تبدیل و کنار پیوست ذخیره می‌کند.
                         </div>
 
                         {taskForm.files.length ? (
@@ -980,7 +1185,7 @@ const DashboardProjectDetailsPage = () => {
                       <button
                         type="submit"
                         className="btn btn-primary"
-                        disabled={savingTask}
+                        disabled={savingTask || recordingTaskAudio}
                       >
                         <PlusIcon className="h-5 w-5" />
                         {savingTask
@@ -1142,10 +1347,9 @@ const DashboardProjectDetailsPage = () => {
 
                     <textarea
                       className="textarea textarea-bordered min-h-32 w-full"
-                      placeholder="چه کاری روی این پروژه انجام شد؟"
+                      placeholder="چه کاری روی این پروژه انجام شد؟ اگر صوت ضبط کنید، می‌توانید این بخش را خالی بگذارید."
                       value={workNote}
                       onChange={(event) => setWorkNote(event.target.value)}
-                      required
                     />
 
                     <input
@@ -1158,18 +1362,55 @@ const DashboardProjectDetailsPage = () => {
                       onChange={(event) => setProgressPercent(event.target.value)}
                     />
 
-                    <input
-                      type="file"
-                      className="file-input file-input-bordered w-full"
-                      onChange={(event) =>
-                        setWorkLogFile(event.target.files?.[0] || null)
-                      }
-                    />
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="file"
+                          className="file-input file-input-bordered w-full"
+                          onChange={(event) =>
+                            setWorkLogFile(event.target.files?.[0] || null)
+                          }
+                        />
+
+                        {recordingWorkLogAudio ? (
+                          <button
+                            type="button"
+                            className="btn btn-error w-full"
+                            onClick={() => stopAudioRecording('workLog')}
+                          >
+                            <StopCircleIcon className="h-5 w-5" />
+                            توقف ضبط صوت
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-outline w-full"
+                            onClick={() => startAudioRecording('workLog')}
+                          >
+                            <MicrophoneIcon className="h-5 w-5" />
+                            ضبط صوت گزارش
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="text-xs leading-6 text-gray-500">
+                        اگر فقط صوت ضبط شود، متن گزارش پس از ارسال با OpenAI ساخته
+                        و ذخیره می‌شود. اگر متن را هم بنویسید، متن دستی به عنوان
+                        توضیح گزارش ذخیره می‌شود و متن تبدیل‌شده کنار فایل صوتی
+                        نمایش داده می‌شود.
+                      </div>
+
+                      {workLogFile ? (
+                        <div className="badge badge-outline max-w-full truncate">
+                          {workLogFile.name}
+                        </div>
+                      ) : null}
+                    </div>
 
                     <button
                       type="submit"
                       className="btn btn-primary w-full"
-                      disabled={savingWorkLog}
+                      disabled={savingWorkLog || recordingWorkLogAudio}
                     >
                       {savingWorkLog ? 'در حال ثبت...' : 'ثبت کار انجام‌شده'}
                     </button>
@@ -1257,25 +1498,57 @@ const DashboardProjectDetailsPage = () => {
 
                   <div className="mt-6 space-y-3">
                     {files.length ? (
-                      files.map((file) => (
-                        <a
-                          key={getFileId(file)}
-                          href={resolveFileUrl(file.fileUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-xl border border-gray-200 p-3 transition hover:border-primary dark:border-gray-800"
-                        >
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {file.originalName}
-                          </div>
+                      files.map((file) => {
+                        const fileUrl = resolveFileUrl(file.fileUrl);
+                        const isAudio = isAudioProjectFile(file);
 
-                          <div className="mt-1 text-xs text-gray-500">
-                            {file.categoryLabel ||
-                              projectFileCategoryLabels[file.category]}{' '}
-                            · {getUserDisplayName(file.uploadedBy)}
+                        return (
+                          <div
+                            key={getFileId(file)}
+                            className="rounded-xl border border-gray-200 p-3 transition hover:border-primary dark:border-gray-800"
+                          >
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block"
+                            >
+                              <div className="font-medium text-gray-900 dark:text-gray-100">
+                                {file.originalName}
+                              </div>
+
+                              <div className="mt-1 text-xs text-gray-500">
+                                {file.categoryLabel ||
+                                  projectFileCategoryLabels[file.category]}{' '}
+                                · {getUserDisplayName(file.uploadedBy)}
+                              </div>
+                            </a>
+
+                            {isAudio ? (
+                              <audio
+                                controls
+                                preload="none"
+                                src={fileUrl}
+                                className="mt-3 w-full"
+                              />
+                            ) : null}
+
+                            {file.transcriptionText ? (
+                              <div className="mt-3 rounded-lg bg-primary/5 p-3 text-sm leading-7 text-gray-700 dark:text-gray-200">
+                                <div className="mb-1 flex items-center gap-1 text-xs font-bold text-primary">
+                                  <SpeakerWaveIcon className="h-4 w-4" />
+                                  متن تبدیل‌شده از صوت
+                                </div>
+                                {file.transcriptionText}
+                              </div>
+                            ) : file.transcriptionStatus === 'failed' ? (
+                              <div className="mt-3 rounded-lg bg-error/10 p-3 text-xs leading-6 text-error">
+                                تبدیل صوت به متن انجام نشد: {file.transcriptionError || 'خطای نامشخص'}
+                              </div>
+                            ) : null}
                           </div>
-                        </a>
-                      ))
+                        );
+                      })
                     ) : (
                       <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500 dark:border-gray-700">
                         هنوز فایلی برای پروژه ثبت نشده است.
