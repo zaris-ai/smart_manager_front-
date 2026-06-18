@@ -37,7 +37,7 @@ const defaultValues: UserPayload = {
   email: '',
   phone: '',
   password: '',
-  role: 'employee',
+  role: 'expert',
   status: 'active',
   profile: {
     jobTitle: '',
@@ -61,14 +61,20 @@ const roleCards: Record<
     activeClassName: string;
   }
 > = {
+  board: {
+    title: 'هیئت مدیره',
+    description: 'مشاهده وضعیت کلان پروژه‌ها، گزارش‌ها و روند پیشرفت بدون امکان تغییر اطلاعات',
+    className: 'border-purple-200 bg-purple-50 text-purple-800',
+    activeClassName: 'ring-purple-500 border-purple-500 bg-purple-100',
+  },
   manager: {
     title: 'مدیر',
     description: 'مدیریت کاربران، پروژه‌ها، وظایف، فایل‌ها و گزارش پیشرفت',
     className: 'border-blue-200 bg-blue-50 text-blue-800',
     activeClassName: 'ring-blue-500 border-blue-500 bg-blue-100',
   },
-  employee: {
-    title: 'کارمند',
+  expert: {
+    title: 'کارشناس',
     description: 'مشاهده و انجام پروژه‌ها و وظایف تخصیص‌یافته',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     activeClassName: 'ring-emerald-500 border-emerald-500 bg-emerald-100',
@@ -179,9 +185,13 @@ const UserFormModal = ({
     try {
       setError('');
 
+      const normalizedRole = normalizeUserRole(values.role);
+
       const payload: UserPayload = {
         ...values,
-        managerId: values.role === 'employee' ? values.managerId || null : null,
+        role: normalizedRole,
+        status: normalizeUserStatus(values.status),
+        managerId: normalizedRole === 'expert' ? values.managerId || null : null,
         password: values.password || undefined,
         telegramUserId: String(values.telegramUserId || '').trim(),
         telegramChatId: String(values.telegramChatId || '').trim(),
@@ -357,11 +367,13 @@ const UserFormModal = ({
                 return (
                   <label
                     key={role}
-                    className={`cursor-pointer rounded-2xl border p-4 transition-all ${visual.className
-                      } ${active
+                    className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+                      visual.className
+                    } ${
+                      active
                         ? `${visual.activeClassName} ring-2 ring-offset-2`
                         : 'hover:shadow-md'
-                      }`}
+                    }`}
                   >
                     <input
                       type="radio"
@@ -395,7 +407,7 @@ const UserFormModal = ({
                 </select>
               </label>
 
-              {selectedRole === 'employee' ? (
+              {selectedRole === 'expert' ? (
                 <label className="form-control">
                   <span className="label label-text">مدیر مستقیم</span>
                   <select

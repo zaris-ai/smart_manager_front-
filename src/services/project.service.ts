@@ -17,6 +17,132 @@ import {
 
 type QueryParams = Record<string, string | number | boolean | undefined | null>;
 
+export type ProjectRole = {
+  id: string;
+  _id?: string;
+  title: string;
+  name?: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder?: number;
+  displayOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ProjectRolePayload = {
+  title: string;
+  description?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+};
+
+export type ProjectMemberPayload = {
+  userId: string;
+  roleId?: string | null;
+  roleInProject?: string;
+  startedAt?: string | null;
+  expectedFinishedAt?: string | null;
+};
+
+export type ProjectMemberUpdatePayload = {
+  roleId?: string | null;
+  roleInProject?: string;
+  startedAt?: string | null;
+  expectedFinishedAt?: string | null;
+};
+
+export type ProjectOverviewSummary = {
+  totalProjects: number;
+  activeProjects: number;
+  completedProjects: number;
+  cancelledProjects: number;
+  overdueProjects: number;
+  dueSoonProjects: number;
+  totalTasks: number;
+  overdueTasks: number;
+  blockedTasks: number;
+  doneTasks: number;
+  totalRoles: number;
+  totalExperts: number;
+  reportFilesCount: number;
+  reportFilesSizeBytes: number;
+};
+
+export type ProjectOverviewStatusChartItem = {
+  key: string;
+  label: string;
+  count: number;
+  overdue?: number;
+};
+
+export type ProjectOverviewPriorityChartItem = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type ProjectOverviewRoleWorkload = {
+  id: string;
+  title: string;
+  totalProjects: number;
+  activeProjects: number;
+  overdueProjects: number;
+};
+
+export type ProjectOverviewExpertWorkload = {
+  id: string;
+  name: string;
+  totalProjects: number;
+  activeProjects: number;
+  overdueProjects: number;
+  roles: string[];
+};
+
+export type ProjectOverviewReportVolume = {
+  projectId: string;
+  projectTitle: string;
+  reportFilesCount: number;
+  reportFilesSizeBytes: number;
+};
+
+export type ProjectOverviewOverdueProject = {
+  id: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  priorityLabel: string;
+  dueDate: string | null;
+  daysOverdue: number;
+  ownerId: string;
+  ownerName: string;
+};
+
+export type ProjectOverviewData = {
+  generatedAt: string;
+  summary: ProjectOverviewSummary;
+  charts: {
+    projectsByStatus: ProjectOverviewStatusChartItem[];
+    projectsByPriority: ProjectOverviewPriorityChartItem[];
+    tasksByStatus: ProjectOverviewStatusChartItem[];
+    overdueByRole: ProjectOverviewRoleWorkload[];
+    overdueByExpert: ProjectOverviewExpertWorkload[];
+    reportVolumeByProject: ProjectOverviewReportVolume[];
+  };
+  tables: {
+    overdueProjects: ProjectOverviewOverdueProject[];
+    roleWorkload: ProjectOverviewRoleWorkload[];
+    expertWorkload: ProjectOverviewExpertWorkload[];
+  };
+};
+
+type ProjectRequestPayload = ProjectPayload & {
+  projectMembers?: ProjectMemberPayload[];
+  members?: ProjectMemberPayload[];
+};
+
+
 const defaultPagination: PaginationState = {
   total: 0,
   page: 1,
@@ -176,6 +302,75 @@ const uploadTaskFilesRequest = async (
   return attachProjectFilesToTask(projectId, task);
 };
 
+
+export const getProjectRoleId = (
+  role: string | ProjectRole | null | undefined,
+): string => {
+  if (!role) {
+    return '';
+  }
+
+  if (typeof role === 'string') {
+    return role;
+  }
+
+  return String(role.id || role._id || '');
+};
+
+export const getProjectRoleTitle = (
+  role: string | ProjectRole | null | undefined,
+): string => {
+  if (!role) {
+    return '';
+  }
+
+  if (typeof role === 'string') {
+    return role;
+  }
+
+  return String(role.title || role.name || '');
+};
+
+const normalizeProjectRole = (role: any): ProjectRole => {
+  return {
+    ...role,
+    id: String(role.id || role._id || ''),
+    title: String(role.title || role.name || ''),
+    description: role.description || '',
+    isActive: role.isActive !== false,
+    sortOrder: Number(role.sortOrder ?? role.displayOrder ?? 0),
+    displayOrder: Number(role.displayOrder ?? role.sortOrder ?? 0),
+  };
+};
+
+const buildProjectRequestPayload = (
+  payload: Partial<ProjectRequestPayload>,
+): Record<string, unknown> => {
+  const requestPayload: Record<string, unknown> = {
+    ...payload,
+  };
+
+  if ('dueDate' in requestPayload) {
+    requestPayload.dueDate = requestPayload.dueDate || null;
+  }
+
+  if ('assignedUserIds' in requestPayload) {
+    requestPayload.assignedUserIds = requestPayload.assignedUserIds || [];
+  }
+
+  if ('projectMembers' in requestPayload && Array.isArray(payload.projectMembers)) {
+    requestPayload.projectMembers = payload.projectMembers.map((member) => ({
+      userId: member.userId,
+      roleId: member.roleId || null,
+      roleInProject: member.roleInProject || '',
+      startedAt: member.startedAt || null,
+      expectedFinishedAt: member.expectedFinishedAt || null,
+    }));
+  }
+
+  return requestPayload;
+};
+
 const buildTaskRequestPayload = (payload: Partial<ProjectTaskPayload>) => {
   const requestPayload: Record<string, unknown> = {};
 
@@ -211,6 +406,16 @@ const buildTaskRequestPayload = (payload: Partial<ProjectTaskPayload>) => {
 };
 
 export const projectService = {
+  async getProjectOverview(): Promise<ProjectOverviewData> {
+    try {
+      const response = await apiClient.get('/project-overview');
+
+      return unwrapData<ProjectOverviewData>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در دریافت نمای کلان پروژه‌ها'));
+    }
+  },
+
   async listProjects(params?: QueryParams): Promise<ProjectListResponse> {
     try {
       const response = await apiClient.get('/projects', { params });
@@ -221,13 +426,12 @@ export const projectService = {
     }
   },
 
-  async createProject(payload: ProjectPayload): Promise<Project> {
+  async createProject(payload: ProjectRequestPayload): Promise<Project> {
     try {
-      const response = await apiClient.post('/projects', {
-        ...payload,
-        dueDate: payload.dueDate || null,
-        assignedUserIds: payload.assignedUserIds || [],
-      });
+      const response = await apiClient.post(
+        '/projects',
+        buildProjectRequestPayload(payload),
+      );
 
       return unwrapData<Project>(response.data);
     } catch (error) {
@@ -265,18 +469,12 @@ export const projectService = {
 
   async updateProject(
     projectId: string,
-    payload: Partial<ProjectPayload>,
+    payload: Partial<ProjectRequestPayload>,
   ): Promise<Project> {
     try {
-      const requestPayload: Partial<ProjectPayload> = { ...payload };
-
-      if ('dueDate' in requestPayload) {
-        requestPayload.dueDate = requestPayload.dueDate || null;
-      }
-
       const response = await apiClient.patch(
         `/projects/${projectId}`,
-        requestPayload,
+        buildProjectRequestPayload(payload),
       );
 
       return unwrapData<Project>(response.data);
@@ -314,6 +512,93 @@ export const projectService = {
       return unwrapData<Project>(response.data);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در حذف کاربر از پروژه'));
+    }
+  },
+
+
+  async updateProjectMember(
+    projectId: string,
+    userId: string,
+    payload: ProjectMemberUpdatePayload,
+  ): Promise<Project> {
+    try {
+      const response = await apiClient.patch(
+        `/projects/${projectId}/users/${userId}`,
+        {
+          roleId: payload.roleId || null,
+          roleInProject: payload.roleInProject || '',
+          startedAt: payload.startedAt || null,
+          expectedFinishedAt: payload.expectedFinishedAt || null,
+        },
+      );
+
+      return unwrapData<Project>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ویرایش نقش عضو پروژه'));
+    }
+  },
+
+  async listProjectRoles(includeInactive = false): Promise<ProjectRole[]> {
+    try {
+      const response = await apiClient.get('/project-roles', {
+        params: {
+          includeInactive: includeInactive || undefined,
+        },
+      });
+
+      const roles = unwrapData<ProjectRole[]>(response.data) || [];
+
+      return Array.isArray(roles) ? roles.map(normalizeProjectRole) : [];
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در دریافت نقش‌های پروژه'));
+    }
+  },
+
+  async createProjectRole(payload: ProjectRolePayload): Promise<ProjectRole> {
+    try {
+      const response = await apiClient.post('/project-roles', {
+        title: payload.title,
+        description: payload.description || '',
+        isActive: payload.isActive !== false,
+        sortOrder: payload.sortOrder ?? 0,
+      });
+
+      return normalizeProjectRole(unwrapData<ProjectRole>(response.data));
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ایجاد نقش پروژه'));
+    }
+  },
+
+  async updateProjectRole(
+    roleId: string,
+    payload: Partial<ProjectRolePayload>,
+  ): Promise<ProjectRole> {
+    try {
+      const response = await apiClient.patch(`/project-roles/${roleId}`, {
+        ...payload,
+        description: payload.description ?? undefined,
+        sortOrder: payload.sortOrder ?? undefined,
+      });
+
+      return normalizeProjectRole(unwrapData<ProjectRole>(response.data));
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ویرایش نقش پروژه'));
+    }
+  },
+
+  async archiveProjectRole(roleId: string): Promise<void> {
+    try {
+      await apiClient.delete(`/project-roles/${roleId}`);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در غیرفعال‌سازی نقش پروژه'));
+    }
+  },
+
+  async deleteProjectRole(roleId: string): Promise<void> {
+    try {
+      await apiClient.delete(`/project-roles/${roleId}`);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در غیرفعال‌سازی نقش پروژه'));
     }
   },
 

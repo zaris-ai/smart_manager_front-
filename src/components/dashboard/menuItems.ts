@@ -1,14 +1,19 @@
+// src/components/dashboard/menuItems.ts
+
+import type { ElementType } from 'react';
 import {
   CalendarDaysIcon,
   ClipboardDocumentListIcon,
   HomeIcon,
+  IdentificationIcon,
+  PresentationChartBarIcon,
   UsersIcon,
 } from '@heroicons/react/24/outline';
 
 export interface MenuItem {
   label: string;
   href?: string;
-  icon: React.ElementType;
+  icon: ElementType;
   badge?: number;
   section?: 'main' | 'users' | 'projects';
 }
@@ -21,9 +26,21 @@ export const menuItems: MenuItem[] = [
     section: 'main',
   },
   {
+    label: 'نمای کلان پروژه‌ها',
+    href: '/dashboard/project-overview',
+    icon: PresentationChartBarIcon,
+    section: 'projects',
+  },
+  {
     label: 'پروژه‌ها',
     href: '/dashboard/projects',
     icon: ClipboardDocumentListIcon,
+    section: 'projects',
+  },
+  {
+    label: 'نقش‌های پروژه',
+    href: '/dashboard/roles',
+    icon: IdentificationIcon,
     section: 'projects',
   },
   {

@@ -3,7 +3,11 @@ import {
   ProjectTimelineFlow,
   TimelineFlowItem,
 } from '@/components/projects/ProjectTimelineFlow';
-import { projectService } from '@/services/project.service';
+import {
+  getProjectRoleId,
+  ProjectRole,
+  projectService,
+} from '@/services/project.service';
 import { userService } from '@/services/user.service';
 import {
   getFileId,
@@ -61,6 +65,26 @@ type TaskFormState = {
   files: File[];
 };
 
+type ProjectMemberReference = {
+  userId?: any;
+  roleId?: ProjectRole | string | null;
+  roleInProject?: string | null;
+  startedAt?: string | null;
+  expectedFinishedAt?: string | null;
+};
+
+type ProjectMemberFormState = {
+  roleId: string;
+  roleInProject: string;
+  startedAt: string;
+  expectedFinishedAt: string;
+};
+
+type ProjectWithMembers = Project & {
+  projectMembers?: ProjectMemberReference[];
+  members?: ProjectMemberReference[];
+};
+
 const priorityOptions: ProjectPriority[] = ['low', 'medium', 'high', 'critical'];
 
 const fileCategoryOptions = Object.keys(
@@ -77,6 +101,30 @@ const createEmptyTaskForm = (): TaskFormState => ({
   status: 'todo',
   files: [],
 });
+
+const getProjectMembers = (project?: Project | null): ProjectMemberReference[] => {
+  if (!project) return [];
+
+  const projectWithMembers = project as ProjectWithMembers;
+
+  if (projectWithMembers.projectMembers?.length) {
+    return projectWithMembers.projectMembers;
+  }
+
+  if (projectWithMembers.members?.length) {
+    return projectWithMembers.members;
+  }
+
+  return (project.assignedUserIds || []).map((user) => ({
+    userId: user,
+    roleInProject:
+      getReferenceId(user) === getReferenceId(project.ownerId)
+        ? 'مسئول پروژه'
+        : 'عضو پروژه',
+    startedAt: project.startDate || null,
+    expectedFinishedAt: project.dueDate || null,
+  }));
+};
 
 const formatDate = (value?: string | null): string => {
   if (!value) return '—';
@@ -272,12 +320,15 @@ const DashboardProjectDetailsPage = () => {
 
   const projectId = typeof router.query.id === 'string' ? router.query.id : '';
   const currentUserId = session?.user?.id || '';
+  const currentRole = String(session?.user?.role || '').toLowerCase();
+  const canManageProject = currentRole === 'manager' || currentRole === 'admin';
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [notes, setNotes] = useState<ProjectProgressNote[]>([]);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [managerUsers, setManagerUsers] = useState<AppUser[]>([]);
+  const [projectRoles, setProjectRoles] = useState<ProjectRole[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -295,6 +346,15 @@ const DashboardProjectDetailsPage = () => {
   const [taskForm, setTaskForm] = useState<TaskFormState>(
     createEmptyTaskForm(),
   );
+
+  const [editingMemberId, setEditingMemberId] = useState('');
+  const [savingMember, setSavingMember] = useState(false);
+  const [memberForm, setMemberForm] = useState<ProjectMemberFormState>({
+    roleId: '',
+    roleInProject: '',
+    startedAt: '',
+    expectedFinishedAt: '',
+  });
 
   const [fileCategory, setFileCategory] = useState<ProjectFileCategory>('other');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -318,6 +378,16 @@ const DashboardProjectDetailsPage = () => {
     return visibleTasks.filter((task) => toDateKey(task.dueDate) === today);
   }, [visibleTasks]);
 
+  const projectMembers = useMemo(() => getProjectMembers(project), [project]);
+
+  const activeProjectRoles = useMemo(() => {
+    return projectRoles.filter((role) => role.isActive !== false);
+  }, [projectRoles]);
+
+  const projectRoleMap = useMemo(() => {
+    return new Map(activeProjectRoles.map((role) => [getProjectRoleId(role), role]));
+  }, [activeProjectRoles]);
+
   const loadProjectWorkspace = async () => {
     if (!projectId) return;
 
@@ -331,12 +401,14 @@ const DashboardProjectDetailsPage = () => {
         notesResponse,
         filesResponse,
         managersResponse,
+        projectRolesResponse,
       ] = await Promise.all([
         projectService.getProject(projectId),
         projectService.listTasks(projectId),
         projectService.listNotes(projectId),
         projectService.listFiles(projectId, { standaloneOnly: true }),
         userService.listUsers({ role: 'manager', isActive: true, limit: 100 }),
+        projectService.listProjectRoles(false),
       ]);
 
       setProject(projectResponse);
@@ -344,6 +416,7 @@ const DashboardProjectDetailsPage = () => {
       setNotes(notesResponse || []);
       setFiles(filesResponse || []);
       setManagerUsers(managersResponse || []);
+      setProjectRoles(projectRolesResponse || []);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'خطا در دریافت اطلاعات پروژه',
@@ -608,6 +681,99 @@ const DashboardProjectDetailsPage = () => {
       return new Date(first.date).getTime() - new Date(second.date).getTime();
     });
   }, [project, tasks, notes]);
+
+  const startEditProjectMember = (member: ProjectMemberReference) => {
+    const userId = getReferenceId(member.userId);
+
+    if (!userId) return;
+
+    setEditingMemberId(userId);
+    setMemberForm({
+      roleId:
+        typeof member.roleId === 'string'
+          ? member.roleId
+          : getProjectRoleId(member.roleId),
+      roleInProject: member.roleInProject || '',
+      startedAt: toDateInput(member.startedAt),
+      expectedFinishedAt: toDateInput(member.expectedFinishedAt),
+    });
+  };
+
+  const cancelEditProjectMember = () => {
+    setEditingMemberId('');
+    setMemberForm({
+      roleId: '',
+      roleInProject: '',
+      startedAt: '',
+      expectedFinishedAt: '',
+    });
+  };
+
+  const saveProjectMember = async (member: ProjectMemberReference) => {
+    if (!project || !projectId) return;
+
+    const memberUserId = getReferenceId(member.userId);
+
+    if (!memberUserId) return;
+
+    if (!memberForm.roleId) {
+      setError('برای عضو پروژه باید یک نقش از صفحه نقش‌ها انتخاب شود.');
+      return;
+    }
+
+    if (
+      memberForm.startedAt &&
+      memberForm.expectedFinishedAt &&
+      new Date(memberForm.expectedFinishedAt) < new Date(memberForm.startedAt)
+    ) {
+      setError('تاریخ پایان احتمالی عضو پروژه نمی‌تواند قبل از تاریخ شروع او باشد.');
+      return;
+    }
+
+    try {
+      setSavingMember(true);
+      setError('');
+
+      const nextMembers = projectMembers.map((item) => {
+        const itemUserId = getReferenceId(item.userId);
+
+        if (itemUserId !== memberUserId) {
+          return {
+            userId: itemUserId,
+            roleId:
+              typeof item.roleId === 'string'
+                ? item.roleId
+                : getProjectRoleId(item.roleId) || null,
+            roleInProject: item.roleInProject || 'عضو پروژه',
+            startedAt: item.startedAt || project.startDate || null,
+            expectedFinishedAt: item.expectedFinishedAt || project.dueDate || null,
+          };
+        }
+
+        const selectedRole = projectRoleMap.get(memberForm.roleId);
+
+        return {
+          userId: itemUserId,
+          roleId: memberForm.roleId,
+          roleInProject: selectedRole?.title || memberForm.roleInProject.trim() || 'عضو پروژه',
+          startedAt: memberForm.startedAt || null,
+          expectedFinishedAt: memberForm.expectedFinishedAt || null,
+        };
+      });
+
+      const updatedProject = await projectService.updateProject(projectId, {
+        assignedUserIds: nextMembers.map((item) => item.userId).filter(Boolean),
+        projectMembers: nextMembers,
+      } as any);
+
+      setProject(updatedProject);
+      cancelEditProjectMember();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در ویرایش عضو پروژه');
+    } finally {
+      setSavingMember(false);
+    }
+  };
 
   const resetTaskForm = () => {
     const currentAssigneeId = taskForm.assigneeId;
@@ -961,20 +1127,153 @@ const DashboardProjectDetailsPage = () => {
             </div>
 
             <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                اعضای پروژه
-              </h2>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                    اعضای پروژه و نقش‌ها
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    نقش هر عضو، زمان شروع همکاری و پایان احتمالی از اینجا قابل مشاهده و ویرایش است.
+                  </p>
+                </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {project.assignedUserIds.length ? (
-                  project.assignedUserIds.map((user) => (
-                    <span
-                      key={getReferenceId(user)}
-                      className="badge badge-outline"
-                    >
-                      {getUserDisplayName(user)}
-                    </span>
-                  ))
+                <span className="badge badge-outline">{projectMembers.length} عضو</span>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                {projectMembers.length ? (
+                  projectMembers.map((member) => {
+                    const memberUserId = getReferenceId(member.userId);
+                    const isEditing = editingMemberId === memberUserId;
+
+                    return (
+                      <div
+                        key={memberUserId}
+                        className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-bold text-gray-900 dark:text-gray-100">
+                              {getUserDisplayName(member.userId)}
+                            </div>
+                            {!isEditing ? (
+                              <div className="mt-1 text-sm font-semibold text-primary">
+                                {member.roleInProject || 'عضو پروژه'}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {canManageProject && !isEditing ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              onClick={() => startEditProjectMember(member)}
+                            >
+                              <PencilSquareIcon className="h-4 w-4" />
+                              ویرایش
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {isEditing ? (
+                          <div className="mt-4 space-y-3">
+                            <select
+                              className="select select-bordered w-full bg-white dark:bg-gray-900"
+                              value={memberForm.roleId}
+                              disabled={!activeProjectRoles.length}
+                              onChange={(event) => {
+                                const role = projectRoleMap.get(event.target.value);
+
+                                setMemberForm((previous) => ({
+                                  ...previous,
+                                  roleId: event.target.value,
+                                  roleInProject: role?.title || '',
+                                }));
+                              }}
+                            >
+                              <option value="">
+                                {activeProjectRoles.length
+                                  ? 'انتخاب نقش پروژه'
+                                  : 'ابتدا نقش پروژه تعریف کنید'}
+                              </option>
+                              {activeProjectRoles.map((role) => (
+                                <option key={getProjectRoleId(role)} value={getProjectRoleId(role)}>
+                                  {role.title}
+                                </option>
+                              ))}
+                            </select>
+                            {!activeProjectRoles.length ? (
+                              <Link
+                                href="/dashboard/projects/roles"
+                                className="inline-flex text-xs font-semibold text-primary hover:underline"
+                              >
+                                رفتن به صفحه تعریف نقش‌ها
+                              </Link>
+                            ) : null}
+
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="form-control">
+                                <span className="label label-text text-xs">شروع</span>
+                                <input
+                                  type="date"
+                                  className="input input-bordered bg-white dark:bg-gray-900"
+                                  value={memberForm.startedAt}
+                                  onChange={(event) =>
+                                    setMemberForm((previous) => ({
+                                      ...previous,
+                                      startedAt: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+
+                              <label className="form-control">
+                                <span className="label label-text text-xs">پایان احتمالی</span>
+                                <input
+                                  type="date"
+                                  className="input input-bordered bg-white dark:bg-gray-900"
+                                  value={memberForm.expectedFinishedAt}
+                                  onChange={(event) =>
+                                    setMemberForm((previous) => ({
+                                      ...previous,
+                                      expectedFinishedAt: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                            </div>
+
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={cancelEditProjectMember}
+                              >
+                                انصراف
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                disabled={savingMember}
+                                onClick={() => saveProjectMember(member)}
+                              >
+                                {savingMember ? 'در حال ذخیره...' : 'ذخیره'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-4 grid gap-2 text-xs text-gray-600 dark:text-gray-300">
+                            <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                              شروع همکاری: {formatDate(member.startedAt)}
+                            </div>
+                            <div className="rounded-xl bg-white px-3 py-2 dark:bg-gray-900">
+                              پایان احتمالی: {formatDate(member.expectedFinishedAt)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 ) : (
                   <span className="text-sm text-gray-500">
                     هنوز کاربری به پروژه تخصیص داده نشده است.

@@ -1,5 +1,13 @@
 import apiClient from '@/lib/axios';
-import { AppUser, UserListResponse, UserPayload } from '@/types/user';
+import {
+  AppUser,
+  UserListResponse,
+  UserPayload,
+  getUserRoleLabel,
+  getUserStatusLabel,
+  normalizeUserRole,
+  normalizeUserStatus,
+} from '@/types/user';
 
 type ApiResponse<T> = {
   success?: boolean;
@@ -50,18 +58,85 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return err.response?.data?.message || err.message || fallback;
 };
 
+const normalizeAppUser = (user: AppUser): AppUser => {
+  const normalizedRole = normalizeUserRole(user.role);
+  const normalizedStatus = normalizeUserStatus(user.status);
+
+  return {
+    ...user,
+    id: user.id || user._id,
+    role: normalizedRole,
+    roleLabel: user.roleLabel || getUserRoleLabel(normalizedRole),
+    status: normalizedStatus,
+    statusLabel: user.statusLabel || getUserStatusLabel(normalizedStatus),
+    profile: user.profile || {},
+    isActive:
+      typeof user.isActive === 'boolean'
+        ? user.isActive
+        : normalizedStatus === 'active',
+  };
+};
+
+const normalizePayload = (payload: UserPayload | Partial<UserPayload>) => {
+  const normalizedRole = payload.role
+    ? normalizeUserRole(payload.role)
+    : undefined;
+
+  const normalizedStatus = payload.status
+    ? normalizeUserStatus(payload.status)
+    : undefined;
+
+  const normalizedPayload: Record<string, unknown> = {
+    ...payload,
+  };
+
+  if (normalizedRole) {
+    normalizedPayload.role = normalizedRole;
+
+    if (normalizedRole !== 'expert') {
+      normalizedPayload.managerId = null;
+    } else if ('managerId' in payload) {
+      normalizedPayload.managerId = payload.managerId || null;
+    }
+  } else if ('managerId' in payload) {
+    normalizedPayload.managerId = payload.managerId || null;
+  } else {
+    delete normalizedPayload.managerId;
+  }
+
+  if (normalizedStatus) {
+    normalizedPayload.status = normalizedStatus;
+  }
+
+  if ('telegramUsername' in payload) {
+    normalizedPayload.telegramUsername =
+      typeof payload.telegramUsername === 'string'
+        ? payload.telegramUsername.trim().replace(/^@/, '').toLowerCase()
+        : payload.telegramUsername;
+  }
+
+  return normalizedPayload;
+};
+
 const normalizeListResponse = (
   responseData: ApiResponse<AppUser[]> | AppUser[],
 ): UserListResponse => {
   if (Array.isArray(responseData)) {
     return {
-      items: responseData,
-      pagination: defaultPagination,
+      items: responseData.map(normalizeAppUser),
+      pagination: {
+        ...defaultPagination,
+        total: responseData.length,
+        limit: responseData.length || defaultPagination.limit,
+        totalPages: 1,
+      },
     };
   }
 
   return {
-    items: Array.isArray(responseData.data) ? responseData.data : [],
+    items: Array.isArray(responseData.data)
+      ? responseData.data.map(normalizeAppUser)
+      : [],
     pagination: responseData.pagination || defaultPagination,
   };
 };
@@ -74,6 +149,10 @@ export const userService = {
           page: 1,
           limit: 100,
           ...params,
+          role: params?.role ? normalizeUserRole(params.role) : undefined,
+          status: params?.status
+            ? normalizeUserStatus(params.status)
+            : undefined,
         },
       });
 
@@ -92,6 +171,10 @@ export const userService = {
           page: 1,
           limit: 20,
           ...params,
+          role: params?.role ? normalizeUserRole(params.role) : undefined,
+          status: params?.status
+            ? normalizeUserStatus(params.status)
+            : undefined,
         },
       });
 
@@ -105,7 +188,7 @@ export const userService = {
     try {
       const response = await apiClient.get('/users/me');
 
-      return unwrapData<AppUser>(response.data);
+      return normalizeAppUser(unwrapData<AppUser>(response.data));
     } catch (error) {
       throw new Error(getErrorMessage(error, 'خطا در دریافت اطلاعات کاربر جاری'));
     }
@@ -115,7 +198,7 @@ export const userService = {
     try {
       const response = await apiClient.get(`/users/${userId}`);
 
-      return unwrapData<AppUser>(response.data);
+      return normalizeAppUser(unwrapData<AppUser>(response.data));
     } catch (error) {
       throw new Error(getErrorMessage(error, 'خطا در دریافت اطلاعات کاربر'));
     }
@@ -123,9 +206,9 @@ export const userService = {
 
   async createUser(payload: UserPayload): Promise<AppUser> {
     try {
-      const response = await apiClient.post('/users', payload);
+      const response = await apiClient.post('/users', normalizePayload(payload));
 
-      return unwrapData<AppUser>(response.data);
+      return normalizeAppUser(unwrapData<AppUser>(response.data));
     } catch (error) {
       throw new Error(getErrorMessage(error, 'خطا در ایجاد کاربر'));
     }
@@ -136,21 +219,40 @@ export const userService = {
     payload: Partial<UserPayload>,
   ): Promise<AppUser> {
     try {
-      const response = await apiClient.patch(`/users/${userId}`, payload);
+      const response = await apiClient.patch(
+        `/users/${userId}`,
+        normalizePayload(payload),
+      );
 
-      return unwrapData<AppUser>(response.data);
+      return normalizeAppUser(unwrapData<AppUser>(response.data));
     } catch (error) {
       throw new Error(getErrorMessage(error, 'خطا در ویرایش کاربر'));
     }
   },
 
-  async deleteUser(userId: string): Promise<AppUser> {
+  async activateUser(userId: string): Promise<AppUser> {
+    try {
+      const response = await apiClient.patch(`/users/${userId}`, {
+        status: 'active',
+      });
+
+      return normalizeAppUser(unwrapData<AppUser>(response.data));
+    } catch (error) {
+      throw new Error(getErrorMessage(error, 'خطا در فعال‌سازی کاربر'));
+    }
+  },
+
+  async deactivateUser(userId: string): Promise<AppUser> {
     try {
       const response = await apiClient.delete(`/users/${userId}`);
 
-      return unwrapData<AppUser>(response.data);
+      return normalizeAppUser(unwrapData<AppUser>(response.data));
     } catch (error) {
       throw new Error(getErrorMessage(error, 'خطا در غیرفعال‌سازی کاربر'));
     }
+  },
+
+  async deleteUser(userId: string): Promise<AppUser> {
+    return this.deactivateUser(userId);
   },
 };

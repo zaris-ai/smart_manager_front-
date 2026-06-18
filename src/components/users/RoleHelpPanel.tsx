@@ -5,29 +5,29 @@ const RoleHelpPanel = () => {
 
       <div className="mt-4 grid gap-4 md:grid-cols-3">
         <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
+          <h4 className="font-bold">هیئت مدیره</h4>
+          <p className="mt-2 text-sm leading-7 text-gray-600 dark:text-gray-300">
+            هیئت مدیره دسترسی مشاهده‌ای و نظارتی دارد. این نقش می‌تواند وضعیت کلی پروژه‌ها، گزارش‌ها، فایل‌ها، وظایف و روند پیشرفت را مشاهده کند، اما امکان ایجاد، ویرایش، حذف، تخصیص وظیفه یا تغییر وضعیت عملیاتی را ندارد.
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
           <h4 className="font-bold">مدیر</h4>
           <p className="mt-2 text-sm leading-7 text-gray-600 dark:text-gray-300">
-            مدیر می‌تواند کاربران را ایجاد و ویرایش کند، پروژه تعریف کند، کاربران را به پروژه و وظایف تخصیص دهد، یادداشت پیشرفت ثبت کند و فایل‌های پروژه را مدیریت کند.
+            مدیر می‌تواند کاربران را ایجاد و ویرایش کند، پروژه تعریف کند، کاربران و کارشناسان را به پروژه و وظایف تخصیص دهد، یادداشت پیشرفت ثبت کند، فایل‌های پروژه را مدیریت کند و وضعیت اجرای پروژه‌ها را پیگیری کند.
           </p>
         </div>
 
         <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
-          <h4 className="font-bold">کارمند</h4>
+          <h4 className="font-bold">کارشناس</h4>
           <p className="mt-2 text-sm leading-7 text-gray-600 dark:text-gray-300">
-            کارمند فقط پروژه‌ها و وظایف تخصیص‌یافته به خودش را مشاهده می‌کند و می‌تواند وضعیت وظایف خودش را به‌روزرسانی کند.
-          </p>
-        </div>
-
-        <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
-          <h4 className="font-bold">اتصال ربات تلگرام</h4>
-          <p className="mt-2 text-sm leading-7 text-gray-600 dark:text-gray-300">
-            برای اتصال کاربر به ربات، کاربر باید در تلگرام دستور <span dir="ltr">/start</span> را ارسال کند. ربات شناسه‌های Telegram User ID و Telegram Chat ID را برمی‌گرداند. مدیر این مقادیر را در فرم کاربر ثبت می‌کند.
+            کارشناس فقط پروژه‌ها و وظایف تخصیص‌یافته به خودش را مشاهده می‌کند و می‌تواند گزارش، توضیح، فایل، عکس، ویس و وضعیت پیشرفت کارهای خودش را ثبت یا به‌روزرسانی کند.
           </p>
         </div>
       </div>
 
       <p className="mt-4 text-sm leading-7">
-        در این نسخه، دسترسی‌ها ساده و عملیاتی هستند. اتصال تلگرام فقط برای ثبت گزارش، توضیح، فایل، عکس و ویس پروژه از طریق ربات استفاده می‌شود.
+        برای اتصال کاربر به ربات تلگرام، کاربر باید در تلگرام دستور <span dir="ltr">/start</span> را ارسال کند. ربات شناسه‌های Telegram User ID و Telegram Chat ID را برمی‌گرداند و مدیر این مقادیر را در فرم کاربر ثبت می‌کند. اتصال تلگرام برای ثبت گزارش، توضیح، فایل، عکس و ویس پروژه از طریق ربات استفاده می‌شود.
       </p>
     </div>
   );

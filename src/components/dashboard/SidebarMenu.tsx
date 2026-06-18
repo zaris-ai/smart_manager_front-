@@ -13,6 +13,8 @@ const allowedMenuHrefs = [
   '/dashboard/projects',
   '/dashboard/calendar',
   '/dashboard/users',
+  '/dashboard/roles',
+  '/dashboard/project-overview'
 ];
 
 export const SidebarMenu: React.FC<SidebarMenuProps> = ({

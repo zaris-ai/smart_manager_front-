@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
   ChatBubbleLeftRightIcon,
+  CheckCircleIcon,
   EyeIcon,
   EyeSlashIcon,
+  NoSymbolIcon,
   PencilSquareIcon,
   PlusIcon,
-  TrashIcon,
 } from '@heroicons/react/24/outline';
+import { Toaster, toast } from 'sonner';
 
 import { DashboardLayout } from '@/components/layouts';
 import { RoleHelpPanel, UserFormModal } from '@/components/users';
@@ -17,7 +19,7 @@ import {
   getUserDisplayName,
   getUserId,
   hasTelegramLink,
-  isManagerRole,
+  normalizeUserRole,
   normalizeUserStatus,
   userRoleLabels,
   userStatusLabels,
@@ -25,7 +27,7 @@ import {
 import { withAuth } from '@/utils';
 
 const statusBadgeClass = (status?: string): string => {
-  switch (status) {
+  switch (normalizeUserStatus(status)) {
     case 'active':
       return 'badge-success';
     case 'inactive':
@@ -38,7 +40,16 @@ const statusBadgeClass = (status?: string): string => {
 };
 
 const roleBadgeClass = (role?: string): string => {
-  return isManagerRole(role) ? 'badge-primary' : 'badge-info';
+  switch (normalizeUserRole(role)) {
+    case 'board':
+      return 'badge-secondary';
+    case 'manager':
+      return 'badge-primary';
+    case 'expert':
+      return 'badge-info';
+    default:
+      return 'badge-neutral';
+  }
 };
 
 const DashboardUsersPage = () => {
@@ -53,14 +64,21 @@ const DashboardUsersPage = () => {
   const [status, setStatus] = useState('');
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [processingUserId, setProcessingUserId] = useState('');
 
-  const managersCount = useMemo(() => {
-    return users.filter((user) => isManagerRole(user.role)).length;
+  const boardCount = useMemo(() => {
+    return users.filter((user) => normalizeUserRole(user.role) === 'board')
+      .length;
   }, [users]);
 
-  const employeesCount = useMemo(() => {
-    return users.filter((user) => !isManagerRole(user.role)).length;
+  const managersCount = useMemo(() => {
+    return users.filter((user) => normalizeUserRole(user.role) === 'manager')
+      .length;
+  }, [users]);
+
+  const expertsCount = useMemo(() => {
+    return users.filter((user) => normalizeUserRole(user.role) === 'expert')
+      .length;
   }, [users]);
 
   const activeUsersCount = useMemo(() => {
@@ -74,7 +92,6 @@ const DashboardUsersPage = () => {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      setError('');
 
       const response = await userService.listUsersPaginated({
         page: 1,
@@ -86,14 +103,14 @@ const DashboardUsersPage = () => {
 
       setUsers(response.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'خطا در دریافت کاربران');
+      toast.error(err instanceof Error ? err.message : 'خطا در دریافت کاربران');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadUsers();
+    void loadUsers();
   }, []);
 
   const openCreateModal = () => {
@@ -111,23 +128,84 @@ const DashboardUsersPage = () => {
     setSelectedUser(null);
   };
 
-  const handleDelete = async (user: AppUser) => {
-    const confirmed = window.confirm(
-      `آیا از غیرفعال‌سازی کاربر «${getUserDisplayName(user)}» مطمئن هستید؟`,
-    );
+  const handleSaved = async () => {
+    toast.success(selectedUser ? 'کاربر با موفقیت ویرایش شد' : 'کاربر با موفقیت ایجاد شد');
+    await loadUsers();
+  };
 
-    if (!confirmed) return;
+  const handleActivateUser = async (user: AppUser) => {
+    const userId = getUserId(user);
+
+    if (!userId) {
+      toast.error('شناسه کاربر معتبر نیست');
+      return;
+    }
 
     try {
-      await userService.deleteUser(getUserId(user));
+      setProcessingUserId(userId);
+
+      await userService.activateUser(userId);
+      toast.success(`کاربر «${getUserDisplayName(user)}» فعال شد`);
       await loadUsers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'خطا در غیرفعال‌سازی کاربر');
+      toast.error(err instanceof Error ? err.message : 'خطا در فعال‌سازی کاربر');
+    } finally {
+      setProcessingUserId('');
     }
+  };
+
+  const handleDeactivateUser = async (user: AppUser) => {
+    const userId = getUserId(user);
+
+    if (!userId) {
+      toast.error('شناسه کاربر معتبر نیست');
+      return;
+    }
+
+    toast.warning(`آیا از غیرفعال‌سازی کاربر «${getUserDisplayName(user)}» مطمئن هستید؟`, {
+      duration: 8000,
+      action: {
+        label: 'غیرفعال کن',
+        onClick: async () => {
+          try {
+            setProcessingUserId(userId);
+
+            await userService.deactivateUser(userId);
+            toast.success(`کاربر «${getUserDisplayName(user)}» غیرفعال شد`);
+            await loadUsers();
+          } catch (err) {
+            toast.error(
+              err instanceof Error ? err.message : 'خطا در غیرفعال‌سازی کاربر',
+            );
+          } finally {
+            setProcessingUserId('');
+          }
+        },
+      },
+      cancel: {
+        label: 'انصراف',
+        onClick: () => {
+          toast.info('عملیات غیرفعال‌سازی لغو شد');
+        },
+      },
+    });
+  };
+
+  const handleToggleUserStatus = async (user: AppUser) => {
+    const normalizedStatus = normalizeUserStatus(user.status);
+
+    if (normalizedStatus === 'active' && user.isActive) {
+      await handleDeactivateUser(user);
+      return;
+    }
+
+    await handleActivateUser(user);
   };
 
   return (
     <DashboardLayout>
+      <Toaster richColors position="top-center" closeButton />
+
       <div className="space-y-6" dir="rtl">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div>
@@ -135,7 +213,7 @@ const DashboardUsersPage = () => {
               مدیریت کاربران
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              ایجاد، ویرایش، غیرفعال‌سازی و اتصال کاربران به ربات تلگرام.
+              ایجاد، ویرایش، فعال‌سازی، غیرفعال‌سازی و اتصال کاربران به ربات تلگرام.
             </p>
           </div>
 
@@ -162,7 +240,14 @@ const DashboardUsersPage = () => {
 
         {showHelp ? <RoleHelpPanel /> : null}
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
+          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+            <div className="text-sm text-gray-500">هیئت مدیره</div>
+            <div className="mt-2 text-3xl font-bold text-secondary">
+              {boardCount}
+            </div>
+          </div>
+
           <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
             <div className="text-sm text-gray-500">مدیران</div>
             <div className="mt-2 text-3xl font-bold text-primary">
@@ -171,9 +256,9 @@ const DashboardUsersPage = () => {
           </div>
 
           <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-            <div className="text-sm text-gray-500">کارمندان</div>
+            <div className="text-sm text-gray-500">کارشناسان</div>
             <div className="mt-2 text-3xl font-bold text-info">
-              {employeesCount}
+              {expertsCount}
             </div>
           </div>
 
@@ -207,8 +292,9 @@ const DashboardUsersPage = () => {
               onChange={(event) => setRole(event.target.value)}
             >
               <option value="">همه نقش‌ها</option>
+              <option value="board">هیئت مدیره</option>
               <option value="manager">مدیر</option>
-              <option value="employee">کارمند</option>
+              <option value="expert">کارشناس</option>
             </select>
 
             <select
@@ -228,12 +314,6 @@ const DashboardUsersPage = () => {
             </button>
           </div>
         </div>
-
-        {error ? (
-          <div className="alert alert-error">
-            <span>{error}</span>
-          </div>
-        ) : null}
 
         <div className="overflow-x-auto rounded-2xl bg-white shadow-sm dark:bg-gray-900">
           {loading ? (
@@ -259,11 +339,15 @@ const DashboardUsersPage = () => {
 
               <tbody>
                 {users.map((user) => {
+                  const userId = getUserId(user);
+                  const normalizedRole = normalizeUserRole(user.role);
                   const normalizedStatus = normalizeUserStatus(user.status);
                   const linkedToTelegram = hasTelegramLink(user);
+                  const isProcessing = processingUserId === userId;
+                  const isActive = normalizedStatus === 'active' && user.isActive;
 
                   return (
-                    <tr key={getUserId(user)}>
+                    <tr key={userId}>
                       <td>
                         <div className="font-bold text-gray-900 dark:text-gray-100">
                           {getUserDisplayName(user)}
@@ -274,11 +358,8 @@ const DashboardUsersPage = () => {
                       </td>
 
                       <td>
-                        <span className={`badge ${roleBadgeClass(user.role)}`}>
-                          {user.roleLabel ||
-                            userRoleLabels[
-                              isManagerRole(user.role) ? 'manager' : 'employee'
-                            ]}
+                        <span className={`badge ${roleBadgeClass(normalizedRole)}`}>
+                          {user.roleLabel || userRoleLabels[normalizedRole]}
                         </span>
                       </td>
 
@@ -322,6 +403,7 @@ const DashboardUsersPage = () => {
                             type="button"
                             className="btn btn-warning btn-xs"
                             onClick={() => openEditModal(user)}
+                            disabled={isProcessing}
                           >
                             <PencilSquareIcon className="h-4 w-4" />
                             ویرایش
@@ -329,11 +411,20 @@ const DashboardUsersPage = () => {
 
                           <button
                             type="button"
-                            className="btn btn-error btn-xs"
-                            onClick={() => handleDelete(user)}
+                            className={`btn btn-xs ${isActive ? 'btn-error' : 'btn-success'
+                              }`}
+                            onClick={() => handleToggleUserStatus(user)}
+                            disabled={isProcessing}
                           >
-                            <TrashIcon className="h-4 w-4" />
-                            غیرفعال
+                            {isProcessing ? (
+                              <span className="loading loading-spinner loading-xs" />
+                            ) : isActive ? (
+                              <NoSymbolIcon className="h-4 w-4" />
+                            ) : (
+                              <CheckCircleIcon className="h-4 w-4" />
+                            )}
+
+                            {isActive ? 'غیرفعال' : 'فعال'}
                           </button>
                         </div>
                       </td>
@@ -349,7 +440,7 @@ const DashboardUsersPage = () => {
           open={formOpen}
           user={selectedUser}
           onClose={closeFormModal}
-          onSaved={loadUsers}
+          onSaved={handleSaved}
         />
       </div>
     </DashboardLayout>

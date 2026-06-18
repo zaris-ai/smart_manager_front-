@@ -32,6 +32,17 @@ type SelectedDay = {
   events: CalendarEvent[];
 };
 
+type CalendarProjectMember = {
+  userId?: UserReference | string | null;
+  roleInProject?: string | null;
+  startedAt?: string | null;
+  expectedFinishedAt?: string | null;
+};
+
+type CalendarEventWithMembers = CalendarEvent & {
+  projectMembers?: CalendarProjectMember[];
+};
+
 const weekDays = [
   'شنبه',
   'یکشنبه',
@@ -169,6 +180,24 @@ const formatAssignedUsers = (users: UserReference[]): string => {
   if (!users?.length) return 'بدون مسئول مشخص';
 
   return users.map((user) => getUserDisplayName(user)).join('، ');
+};
+
+const getEventProjectMembers = (event: CalendarEvent): CalendarProjectMember[] => {
+  return (event as CalendarEventWithMembers).projectMembers || [];
+};
+
+const formatProjectMemberRoles = (event: CalendarEvent): string => {
+  const members = getEventProjectMembers(event);
+
+  if (!members.length) return formatAssignedUsers(event.assignedUserIds);
+
+  return members
+    .map((member) => {
+      return `${getUserDisplayName(member.userId as UserReference)} (${
+        member.roleInProject || 'عضو پروژه'
+      })`;
+    })
+    .join('، ');
 };
 
 const isUserAssignedToEvent = (
@@ -452,7 +481,7 @@ export const ProjectCalendar = ({
                                 </div>
 
                                 <div className="mt-2 text-sm text-base-content/60">
-                                  مسئولان: {formatAssignedUsers(event.assignedUserIds)}
+                                  مسئولان و نقش‌ها: {formatProjectMemberRoles(event)}
                                 </div>
                               </div>
 
@@ -540,7 +569,7 @@ export const ProjectCalendar = ({
 
                               <div className="mt-2 text-sm text-base-content/60">
                                 کاربران مرتبط:{' '}
-                                {formatAssignedUsers(event.assignedUserIds)}
+                                {formatProjectMemberRoles(event)}
                               </div>
                             </div>
 

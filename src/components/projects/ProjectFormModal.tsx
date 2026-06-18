@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { projectService } from '@/services/project.service';
+import {
+  getProjectRoleId,
+  ProjectRole,
+  projectService,
+} from '@/services/project.service';
 import { userService } from '@/services/user.service';
 import {
   getProjectId,
@@ -34,6 +38,28 @@ type ProjectFormModalProps = {
   onSaved: () => void;
 };
 
+type ProjectMemberFormState = {
+  userId: string;
+  roleId: string;
+  roleInProject: string;
+  startedAt: string;
+  expectedFinishedAt: string;
+};
+
+type ProjectMemberReference = {
+  userId?: UserSummary | string | null;
+  roleId?: ProjectRole | string | null;
+  roleInProject?: string | null;
+  startedAt?: string | null;
+  expectedFinishedAt?: string | null;
+};
+
+type ProjectWithMembers = Project & {
+  projectMembers?: ProjectMemberReference[];
+  members?: ProjectMemberReference[];
+};
+
+
 const toDateInputValue = (value?: string | null): string => {
   if (!value) return '';
 
@@ -51,6 +77,52 @@ const getUserId = (user: UserSummary): string => {
 const getInitials = (user: UserSummary): string => {
   return getUserDisplayName(user).slice(0, 2);
 };
+
+const normalizeMemberDraftsFromProject = (
+  project: Project | null | undefined,
+): Record<string, ProjectMemberFormState> => {
+  if (!project) return {};
+
+  const projectWithMembers = project as ProjectWithMembers;
+  const members = projectWithMembers.projectMembers || projectWithMembers.members || [];
+
+  return members.reduce<Record<string, ProjectMemberFormState>>((acc, member) => {
+    const userId = getReferenceId(member.userId);
+
+    if (!userId) return acc;
+
+    acc[userId] = {
+      userId,
+      roleId:
+        typeof member.roleId === 'string'
+          ? member.roleId
+          : getProjectRoleId(member.roleId),
+      roleInProject: member.roleInProject || '',
+      startedAt: toDateInputValue(member.startedAt),
+      expectedFinishedAt: toDateInputValue(member.expectedFinishedAt),
+    };
+
+    return acc;
+  }, {});
+};
+
+const buildDefaultMemberDraft = ({
+  userId,
+  ownerId,
+  startDate,
+  dueDate,
+}: {
+  userId: string;
+  ownerId?: string | null;
+  startDate?: string | null;
+  dueDate?: string | null;
+}): ProjectMemberFormState => ({
+  userId,
+  roleId: '',
+  roleInProject: userId === ownerId ? 'مسئول پروژه' : 'عضو پروژه',
+  startedAt: startDate || '',
+  expectedFinishedAt: dueDate || '',
+});
 
 const statusVisuals: Record<
   ProjectStatus,
@@ -153,9 +225,12 @@ export const ProjectFormModal = ({
   onSaved,
 }: ProjectFormModalProps) => {
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [projectRoles, setProjectRoles] = useState<ProjectRole[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingRoles, setLoadingRoles] = useState(false);
   const [error, setError] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [memberDrafts, setMemberDrafts] = useState<Record<string, ProjectMemberFormState>>({});
 
   const isEditMode = Boolean(project && getProjectId(project));
 
@@ -197,9 +272,41 @@ export const ProjectFormModal = ({
 
   const ownerOptions = managerUsers.length > 0 ? managerUsers : activeUsers;
 
+  const activeProjectRoles = useMemo(() => {
+    return projectRoles.filter((role) => role.isActive !== false);
+  }, [projectRoles]);
+
+  const projectRoleMap = useMemo(() => {
+    return new Map(activeProjectRoles.map((role) => [getProjectRoleId(role), role]));
+  }, [activeProjectRoles]);
+
   const selectedUsers = useMemo(() => {
     return activeUsers.filter((user) => selectedUserIds.includes(getUserId(user)));
   }, [activeUsers, selectedUserIds]);
+
+  const selectedMemberIds = useMemo(() => {
+    return Array.from(
+      new Set(
+        [selectedOwnerId, ...selectedUserIds].filter(
+          (item): item is string => Boolean(item),
+        ),
+      ),
+    );
+  }, [selectedOwnerId, selectedUserIds]);
+
+  const selectedMemberDrafts = useMemo(() => {
+    return selectedMemberIds.map((userId) => {
+      return (
+        memberDrafts[userId] ||
+        buildDefaultMemberDraft({
+          userId,
+          ownerId: selectedOwnerId,
+          startDate: watchedStartDate,
+          dueDate: watchedDueDate,
+        })
+      );
+    });
+  }, [memberDrafts, selectedMemberIds, selectedOwnerId, watchedStartDate, watchedDueDate]);
 
   const selectedOwner = useMemo(() => {
     return activeUsers.find((user) => getUserId(user) === selectedOwnerId);
@@ -226,28 +333,39 @@ export const ProjectFormModal = ({
   useEffect(() => {
     if (!open) return;
 
-    const loadUsers = async () => {
+    const loadInitialData = async () => {
       try {
         setLoadingUsers(true);
+        setLoadingRoles(true);
         setError('');
 
-        const items = await userService.listUsers();
+        const [items, roles] = await Promise.all([
+          userService.listUsers(),
+          projectService.listProjectRoles(false),
+        ]);
 
         setUsers(items);
+        setProjectRoles(roles);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'خطا در دریافت کاربران');
+        setError(err instanceof Error ? err.message : 'خطا در دریافت اطلاعات فرم پروژه');
       } finally {
         setLoadingUsers(false);
+        setLoadingRoles(false);
       }
     };
 
-    loadUsers();
+    loadInitialData();
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
 
     if (project) {
+      const assignedUserIds =
+        project.assignedUserIds?.map((user) => getReferenceId(user)).filter(Boolean) ||
+        [];
+      const ownerId = getReferenceId(project.ownerId);
+
       reset({
         title: project.title || '',
         description: project.description || '',
@@ -255,11 +373,11 @@ export const ProjectFormModal = ({
         priority: project.priority || 'medium',
         startDate: toDateInputValue(project.startDate),
         dueDate: toDateInputValue(project.dueDate),
-        ownerId: getReferenceId(project.ownerId),
-        assignedUserIds:
-          project.assignedUserIds?.map((user) => getReferenceId(user)).filter(Boolean) ||
-          [],
+        ownerId,
+        assignedUserIds,
       });
+
+      setMemberDrafts(normalizeMemberDraftsFromProject(project));
     } else {
       reset({
         title: '',
@@ -271,6 +389,8 @@ export const ProjectFormModal = ({
         ownerId: '',
         assignedUserIds: [],
       });
+
+      setMemberDrafts({});
     }
 
     setUserSearch('');
@@ -287,6 +407,20 @@ export const ProjectFormModal = ({
       shouldTouch: true,
       shouldValidate: true,
     });
+
+    if (!selectedUserIds.includes(userId)) {
+      setMemberDrafts((previous) => ({
+        ...previous,
+        [userId]:
+          previous[userId] ||
+          buildDefaultMemberDraft({
+            userId,
+            ownerId: selectedOwnerId,
+            startDate: watchedStartDate,
+            dueDate: watchedDueDate,
+          }),
+      }));
+    }
   };
 
   const removeAssignedUser = (userId: string) => {
@@ -301,6 +435,42 @@ export const ProjectFormModal = ({
     );
   };
 
+  useEffect(() => {
+    if (!selectedOwnerId) return;
+
+    setMemberDrafts((previous) => ({
+      ...previous,
+      [selectedOwnerId]:
+        previous[selectedOwnerId] ||
+        buildDefaultMemberDraft({
+          userId: selectedOwnerId,
+          ownerId: selectedOwnerId,
+          startDate: watchedStartDate,
+          dueDate: watchedDueDate,
+        }),
+    }));
+  }, [selectedOwnerId, watchedStartDate, watchedDueDate]);
+
+  const updateMemberDraft = (
+    userId: string,
+    field: keyof Omit<ProjectMemberFormState, 'userId'>,
+    value: string,
+  ) => {
+    setMemberDrafts((previous) => ({
+      ...previous,
+      [userId]: {
+        ...(previous[userId] ||
+          buildDefaultMemberDraft({
+            userId,
+            ownerId: selectedOwnerId,
+            startDate: watchedStartDate,
+            dueDate: watchedDueDate,
+          })),
+        [field]: value,
+      },
+    }));
+  };
+
   const submitHandler = async (values: ProjectPayload) => {
     try {
       setError('');
@@ -309,10 +479,63 @@ export const ProjectFormModal = ({
         new Set([...(values.assignedUserIds || []), values.ownerId].filter(Boolean)),
       );
 
-      const payload: ProjectPayload = {
+      const projectMembers = assignedUserIds.map((userId) => {
+        const draft =
+          memberDrafts[userId] ||
+          buildDefaultMemberDraft({
+            userId,
+            ownerId: values.ownerId,
+            startDate: values.startDate || '',
+            dueDate: values.dueDate || '',
+          });
+
+        const selectedRole = draft.roleId ? projectRoleMap.get(draft.roleId) : null;
+
+        return {
+          userId,
+          roleId: draft.roleId || null,
+          roleInProject:
+            selectedRole?.title ||
+            draft.roleInProject.trim() ||
+            (userId === values.ownerId ? 'مسئول پروژه' : 'عضو پروژه'),
+          startedAt: draft.startedAt || values.startDate || null,
+          expectedFinishedAt: draft.expectedFinishedAt || values.dueDate || null,
+        };
+      });
+
+      const memberWithoutRole = projectMembers.find((member) => !member.roleId);
+
+      if (memberWithoutRole) {
+        setError('برای همه اعضای پروژه باید نقش از صفحه نقش‌ها انتخاب شود.');
+        return;
+      }
+
+      const invalidMemberDate = projectMembers.find((member) => {
+        return (
+          member.startedAt &&
+          member.expectedFinishedAt &&
+          new Date(member.expectedFinishedAt) < new Date(member.startedAt)
+        );
+      });
+
+      if (invalidMemberDate) {
+        setError('تاریخ پایان احتمالی عضو پروژه نمی‌تواند قبل از تاریخ شروع او باشد.');
+        return;
+      }
+
+      const payload = {
         ...values,
         dueDate: values.dueDate || null,
         assignedUserIds,
+        projectMembers,
+      } as ProjectPayload & {
+        projectMembers: Array<{
+          userId: string;
+          roleId: string | null;
+          roleInProject: string;
+          startedAt: string | null;
+          expectedFinishedAt: string | null;
+        }>;
       };
 
       if (isEditMode && project) {
@@ -345,7 +568,7 @@ export const ProjectFormModal = ({
                   {isEditMode ? 'ویرایش پروژه' : 'ایجاد پروژه جدید'}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  فقط مدیران می‌توانند پروژه ایجاد یا ویرایش کنند. کارمندان فقط پروژه‌ها و وظایف تخصیص‌یافته را می‌بینند.
+                  فقط مدیران می‌توانند پروژه ایجاد یا ویرایش کنند. کارشناسان فقط پروژه‌ها و وظایف تخصیص‌یافته را می‌بینند.
                 </p>
               </div>
             </div>
@@ -601,7 +824,7 @@ export const ProjectFormModal = ({
                       تیم پروژه
                     </h4>
                     <p className="text-xs text-gray-500">
-                      مسئول پروژه باید مدیر باشد. کارمندان فقط به‌عنوان عضو یا مسئول وظیفه انتخاب می‌شوند.
+                      مسئول پروژه باید مدیر باشد. کارشناسان فقط به‌عنوان عضو یا مسئول وظیفه انتخاب می‌شوند.
                     </p>
                   </div>
                 </div>
@@ -678,6 +901,130 @@ export const ProjectFormModal = ({
                             </span>
                           );
                         })}
+                      </div>
+                    ) : null}
+
+                    {selectedMemberDrafts.length > 0 ? (
+                      <div className="mb-4 space-y-3 rounded-2xl border border-primary/10 bg-primary/5 p-4">
+                        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                            نقش و زمان‌بندی هر عضو
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            برای هر نفر نقش، تاریخ شروع و پایان احتمالی را مشخص کنید.
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {selectedMemberDrafts.map((draft) => {
+                            const user = activeUsers.find((item) => getUserId(item) === draft.userId);
+                            const isOwner = draft.userId === selectedOwnerId;
+
+                            return (
+                              <div
+                                key={draft.userId}
+                                className="rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900"
+                              >
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <div className="font-bold text-gray-900 dark:text-gray-100">
+                                      {user ? getUserDisplayName(user) : 'کاربر انتخاب‌شده'}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {isOwner ? 'مسئول اصلی پروژه' : 'عضو پروژه'}
+                                    </div>
+                                  </div>
+
+                                  {isOwner ? (
+                                    <span className="badge badge-primary">مسئول پروژه</span>
+                                  ) : null}
+                                </div>
+
+                                <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+                                  <label className="form-control">
+                                    <span className="label label-text text-xs font-semibold">
+                                      نقش در پروژه
+                                    </span>
+                                    <select
+                                      className="select select-bordered bg-white dark:bg-gray-950"
+                                      value={draft.roleId}
+                                      disabled={loadingRoles || !activeProjectRoles.length}
+                                      onChange={(event) => {
+                                        const role = projectRoleMap.get(event.target.value);
+
+                                        updateMemberDraft(
+                                          draft.userId,
+                                          'roleId',
+                                          event.target.value,
+                                        );
+                                        updateMemberDraft(
+                                          draft.userId,
+                                          'roleInProject',
+                                          role?.title || '',
+                                        );
+                                      }}
+                                    >
+                                      <option value="">
+                                        {activeProjectRoles.length
+                                          ? 'انتخاب نقش پروژه'
+                                          : 'ابتدا نقش پروژه تعریف کنید'}
+                                      </option>
+                                      {activeProjectRoles.map((role) => (
+                                        <option key={getProjectRoleId(role)} value={getProjectRoleId(role)}>
+                                          {role.title}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {!activeProjectRoles.length ? (
+                                      <a
+                                        href="/dashboard/projects/roles"
+                                        className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline"
+                                      >
+                                        رفتن به صفحه تعریف نقش‌ها
+                                      </a>
+                                    ) : null}
+                                  </label>
+
+                                  <label className="form-control">
+                                    <span className="label label-text text-xs font-semibold">
+                                      شروع همکاری
+                                    </span>
+                                    <input
+                                      type="date"
+                                      className="input input-bordered bg-white dark:bg-gray-950"
+                                      value={draft.startedAt}
+                                      onChange={(event) =>
+                                        updateMemberDraft(
+                                          draft.userId,
+                                          'startedAt',
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </label>
+
+                                  <label className="form-control">
+                                    <span className="label label-text text-xs font-semibold">
+                                      پایان احتمالی
+                                    </span>
+                                    <input
+                                      type="date"
+                                      className="input input-bordered bg-white dark:bg-gray-950"
+                                      value={draft.expectedFinishedAt}
+                                      onChange={(event) =>
+                                        updateMemberDraft(
+                                          draft.userId,
+                                          'expectedFinishedAt',
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     ) : null}
 
@@ -774,9 +1121,34 @@ export const ProjectFormModal = ({
                   </div>
 
                   <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
-                    <div className="text-xs text-gray-500">اعضای پروژه</div>
-                    <div className="mt-1 font-bold text-gray-900 dark:text-gray-100">
-                      {selectedUserIds.length} نفر
+                    <div className="text-xs text-gray-500">اعضا و نقش‌ها</div>
+                    <div className="mt-2 space-y-2">
+                      {selectedMemberDrafts.length ? (
+                        selectedMemberDrafts.slice(0, 4).map((member) => {
+                          const user = activeUsers.find((item) => getUserId(item) === member.userId);
+
+                          return (
+                            <div key={member.userId} className="rounded-lg bg-white p-2 dark:bg-gray-900">
+                              <div className="font-bold text-gray-900 dark:text-gray-100">
+                                {user ? getUserDisplayName(user) : 'عضو پروژه'}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {member.roleInProject || 'عضو پروژه'}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="font-bold text-gray-900 dark:text-gray-100">
+                          هنوز عضوی انتخاب نشده
+                        </div>
+                      )}
+
+                      {selectedMemberDrafts.length > 4 ? (
+                        <div className="text-xs text-gray-500">
+                          +{selectedMemberDrafts.length - 4} عضو دیگر
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
