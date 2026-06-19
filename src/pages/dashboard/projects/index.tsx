@@ -16,6 +16,7 @@ import { withAuth } from '@/utils';
 import {
   ArrowPathIcon,
   ArrowUpTrayIcon,
+  BanknotesIcon,
   CalendarDaysIcon,
   ClockIcon,
   ExclamationTriangleIcon,
@@ -526,6 +527,14 @@ const DashboardProjectsPage = () => {
                       >
                         <EyeIcon className="h-4 w-4" />
                         مشاهده
+                      </Link>
+
+                      <Link
+                        href={`/dashboard/projects/${projectId}/finance`}
+                        className="btn btn-outline btn-sm"
+                      >
+                        <BanknotesIcon className="h-4 w-4" />
+                        مالی
                       </Link>
 
                       {isManager ? (

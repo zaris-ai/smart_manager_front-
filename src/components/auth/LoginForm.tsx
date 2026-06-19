@@ -134,7 +134,7 @@ const LoginForm: React.FC = () => {
           placeholder="نام کاربری خود را وارد کنید"
           error={errors.username?.message}
           hint={!errors.username?.message ? 'مثال: admin' : undefined}
-          leftIcon={<UserIcon className="h-5 w-5" />}
+          rightIcon={<UserIcon className="h-5 w-5" />}
           autoComplete="username"
           autoFocus
         />
@@ -145,7 +145,7 @@ const LoginForm: React.FC = () => {
           label="رمز عبور"
           placeholder="رمز عبور خود را وارد کنید"
           error={errors.password?.message}
-          leftIcon={<LockClosedIcon className="h-5 w-5" />}
+          rightIcon={<LockClosedIcon className="h-5 w-5" />}
           autoComplete="current-password"
         />
       </div>

@@ -33,6 +33,7 @@ import { withAuth } from '@/utils';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
+  BanknotesIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -1060,6 +1061,13 @@ const DashboardProjectDetailsPage = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {projectId ? (
+              <Link href={`/dashboard/projects/${projectId}/finance`} className="btn btn-primary">
+                <BanknotesIcon className="h-5 w-5" />
+                مالی پروژه
+              </Link>
+            ) : null}
+
             <Link href="/dashboard/calendar" className="btn btn-outline">
               <CalendarDaysIcon className="h-5 w-5" />
               مشاهده در تقویم
