@@ -423,7 +423,7 @@ const ProjectHealthTreemapContent = (props: any) => {
   const visibleName = safeName.length > maxTitleChars ? `${safeName.slice(0, maxTitleChars - 1)}…` : safeName;
 
   return (
-    <g dir="rtl">
+    <g>
       <defs>
         <clipPath id={clipId}>
           <rect

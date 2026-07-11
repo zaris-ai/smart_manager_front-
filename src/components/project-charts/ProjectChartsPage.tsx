@@ -115,10 +115,14 @@ const formatPercent = (value: number | null | undefined): string => {
   return `${formatNumber(value || 0)}٪`;
 };
 
-const formatTaskPercentLabel = (value: number | null | undefined): string => {
-  const percent = Number(value || 0);
+type ChartLabelValue = string | number | boolean | null | undefined;
 
-  if (percent < 8) return '';
+const formatTaskPercentLabel = (value: ChartLabelValue): string => {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+
+  const percent = Number(value);
+
+  if (!Number.isFinite(percent) || percent < 8) return '';
 
   return `${formatNumber(percent)}٪`;
 };

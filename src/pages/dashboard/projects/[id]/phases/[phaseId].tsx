@@ -118,12 +118,18 @@ const DashboardProjectPhaseDetailsPage = () => {
         },
       );
 
-      const currentPhases = project.phases || [];
-      const refreshedPhases = currentPhases.map((item) =>
-        getPhaseId(item) === selectedPhaseId ? updatedPhase : item,
-      );
+      setProject((currentProject) => {
+        if (!currentProject) return currentProject;
 
-      setProject({ ...project, phases: refreshedPhases });
+        const currentPhases = Array.isArray(currentProject.phases)
+          ? currentProject.phases
+          : [];
+        const refreshedPhases = currentPhases.map((item) =>
+          getPhaseId(item) === selectedPhaseId ? updatedPhase : item,
+        );
+
+        return { ...currentProject, phases: refreshedPhases };
+      });
       setForm(buildFinancialForm(updatedPhase));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'خطا در ثبت مالی فاز');
