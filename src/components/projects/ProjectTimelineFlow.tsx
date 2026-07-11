@@ -105,7 +105,7 @@ const getNodeBorderClass = (type: TimelineFlowItemType): string => {
     case 'work_report':
       return 'border-primary/40';
     default:
-      return 'border-gray-200';
+      return 'border-base-300';
   }
 };
 
@@ -116,7 +116,7 @@ const TimelineCardNode = ({ data }: NodeProps<TimelineNode>) => {
   return (
     <div
       dir="rtl"
-      className={`min-h-[130px] w-[250px] rounded-2xl border-2 bg-white p-4 text-right shadow-sm transition hover:shadow-md dark:bg-gray-900 ${getNodeBorderClass(
+      className={`min-h-[130px] w-[250px] rounded-2xl border-2 bg-base-100 p-4 text-right shadow-sm transition hover:shadow-md ${getNodeBorderClass(
         item.type,
       )}`}
     >
@@ -144,14 +144,14 @@ const TimelineCardNode = ({ data }: NodeProps<TimelineNode>) => {
         ) : null}
       </div>
 
-      <div className="mt-3 text-xs text-gray-500">{formatDate(item.date)}</div>
+      <div className="mt-3 text-xs text-base-content/55">{formatDate(item.date)}</div>
 
-      <div className="mt-1 line-clamp-2 text-sm font-bold leading-6 text-gray-900 dark:text-gray-100">
+      <div className="mt-1 line-clamp-2 text-sm font-bold leading-6 text-base-content">
         {item.title}
       </div>
 
       {item.description ? (
-        <div className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">
+        <div className="mt-2 line-clamp-2 text-xs leading-5 text-base-content/60">
           {item.description}
         </div>
       ) : null}
@@ -221,14 +221,14 @@ export const ProjectTimelineFlow = ({
 
   return (
     <>
-      <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+      <div className="avid-glass-surface rounded-2xl p-5">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <h2 className="text-lg font-black text-base-content">
               تایم‌لاین پروژه
             </h2>
 
-            <p className="mt-1 text-sm leading-6 text-gray-500">
+            <p className="mt-1 text-sm leading-6 text-base-content/60">
               وظایف ثبت‌شده از پنل یا تلگرام، فایل‌های وظیفه، گزارش‌های کار و
               تکمیل وظایف در این بخش نمایش داده می‌شوند.
             </p>
@@ -244,7 +244,7 @@ export const ProjectTimelineFlow = ({
           </div>
         </div>
 
-        <div className="mt-5 h-[560px] overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
+        <div className="mt-5 h-[560px] overflow-hidden rounded-2xl border border-base-300 bg-base-200/50">
           {items.length ? (
             <ReactFlow
               nodes={nodes}
@@ -267,13 +267,13 @@ export const ProjectTimelineFlow = ({
                 pannable
                 zoomable
                 nodeStrokeWidth={3}
-                className="!bg-white dark:!bg-gray-900"
+                className="!bg-base-100"
               />
               <Controls />
               <Background gap={18} size={1} />
             </ReactFlow>
           ) : (
-            <div className="flex h-full items-center justify-center p-8 text-center text-sm text-gray-500">
+            <div className="flex h-full items-center justify-center p-8 text-center text-sm text-base-content/55">
               هنوز رویدادی برای تایم‌لاین این پروژه ثبت نشده است.
             </div>
           )}
@@ -285,12 +285,12 @@ export const ProjectTimelineFlow = ({
           <div className="modal-box max-w-2xl">
             <h3 className="text-lg font-bold">{selectedItem.title}</h3>
 
-            <div className="mt-2 text-sm text-gray-500">
+            <div className="mt-2 text-sm text-base-content/55">
               {formatDate(selectedItem.date)}
             </div>
 
             {selectedItem.description ? (
-              <p className="mt-4 leading-7 text-gray-700 dark:text-gray-200">
+              <p className="mt-4 leading-7 text-base-content/75">
                 {selectedItem.description}
               </p>
             ) : null}
@@ -300,11 +300,11 @@ export const ProjectTimelineFlow = ({
                 {selectedItem.meta.map((item) => (
                   <div
                     key={`${item.label}-${item.value}`}
-                    className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800"
+                    className="rounded-xl bg-base-200/70 p-3"
                   >
-                    <div className="text-xs text-gray-500">{item.label}</div>
+                    <div className="text-xs text-base-content/55">{item.label}</div>
 
-                    <div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <div className="mt-1 text-sm font-medium text-base-content">
                       {item.value}
                     </div>
                   </div>
@@ -326,7 +326,7 @@ export const ProjectTimelineFlow = ({
                     return (
                       <div
                         key={getFileId(file)}
-                        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs dark:border-gray-700 dark:bg-gray-900"
+                        className="rounded-lg border border-base-300 bg-base-100 px-3 py-2 text-xs"
                       >
                         <a
                           href={fileUrl}
@@ -334,11 +334,11 @@ export const ProjectTimelineFlow = ({
                           rel="noreferrer"
                           className="flex items-center justify-between gap-3 transition hover:text-primary"
                         >
-                          <span className="min-w-0 truncate font-medium text-gray-800 dark:text-gray-100">
+                          <span className="min-w-0 truncate font-medium text-base-content">
                             {file.originalName}
                           </span>
 
-                          <span className="shrink-0 text-gray-500">
+                          <span className="shrink-0 text-base-content/55">
                             {file.categoryLabel ||
                               projectFileCategoryLabels[file.category]}{' '}
                             · {formatFileSize(file.fileSize)}
@@ -355,7 +355,7 @@ export const ProjectTimelineFlow = ({
                         ) : null}
 
                         {file.transcriptionText ? (
-                          <div className="mt-3 rounded-lg bg-primary/5 p-3 leading-6 text-gray-700 dark:text-gray-200">
+                          <div className="mt-3 rounded-lg bg-primary/5 p-3 leading-6 text-base-content/75">
                             <div className="mb-1 font-bold text-primary">
                               متن تبدیل‌شده از صوت
                             </div>

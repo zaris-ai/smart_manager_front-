@@ -1,3 +1,4 @@
+import ShamsiDateInput from '@/components/common/ShamsiDateInput';
 import { DashboardLayout } from '@/components/layouts';
 import {
   ProjectTimelineFlow,
@@ -12,12 +13,14 @@ import { userService } from '@/services/user.service';
 import {
   getFileId,
   getNoteId,
+  getPhaseId,
   getProjectId,
   getReferenceId,
   getTaskId,
   getUserDisplayName,
   isManagerUser,
   Project,
+  ProjectPhase,
   projectFileCategoryLabels,
   ProjectFile,
   ProjectFileCategory,
@@ -33,12 +36,13 @@ import { withAuth } from '@/utils';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
-  BanknotesIcon,
   CalendarDaysIcon,
+  ChartBarIcon,
   CheckCircleIcon,
   ClockIcon,
   DocumentArrowUpIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   FlagIcon,
   MicrophoneIcon,
   PaperClipIcon,
@@ -46,12 +50,29 @@ import {
   PlusIcon,
   SpeakerWaveIcon,
   StopCircleIcon,
+  UserGroupIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  LabelList,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ElementType, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 type TimelineItem = TimelineFlowItem;
 
@@ -91,6 +112,26 @@ const priorityOptions: ProjectPriority[] = ['low', 'medium', 'high', 'critical']
 const fileCategoryOptions = Object.keys(
   projectFileCategoryLabels,
 ) as ProjectFileCategory[];
+
+
+type ProjectDetailTab =
+  | 'summary'
+  | 'phases'
+  | 'members'
+  | 'tasks'
+  | 'reports'
+  | 'files'
+  | 'charts';
+
+const projectDetailTabs: { key: ProjectDetailTab; label: string; hint: string; icon: ElementType }[] = [
+  { key: 'summary', label: 'خلاصه مدیریتی', hint: 'وضعیت فوری پروژه', icon: ChartBarIcon },
+  { key: 'phases', label: 'فازها', hint: 'زمان و مالی ساده', icon: FlagIcon },
+  { key: 'members', label: 'اعضا', hint: 'نقش و مسئولیت', icon: UserGroupIcon },
+  { key: 'tasks', label: 'وظایف', hint: 'کارهای باز و تایم‌لاین', icon: CheckCircleIcon },
+  { key: 'reports', label: 'گزارش کار', hint: 'ثبت و مرور کارها', icon: DocumentTextIcon },
+  { key: 'files', label: 'فایل‌ها', hint: 'پیوست‌های پروژه', icon: PaperClipIcon },
+  { key: 'charts', label: 'نمودارها', hint: 'تحلیل RTL پروژه', icon: ChartBarIcon },
+];
 
 const createEmptyTaskForm = (): TaskFormState => ({
   title: '',
@@ -315,6 +356,184 @@ const renderFiles = (
   );
 };
 
+const PROJECT_DETAIL_CHART_COLORS = [
+  '#2563eb',
+  '#7c3aed',
+  '#16a34a',
+  '#f59e0b',
+  '#e11d48',
+  '#64748b',
+];
+
+const PROJECT_DETAIL_GRID_STROKE = 'var(--app-border-soft)';
+
+const projectDetailAxisTick = {
+  fill: 'var(--app-base-content)',
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+type ProjectDetailChartCardProps = {
+  title: string;
+  description?: string;
+  children: ReactNode;
+};
+
+const ProjectDetailChartCard = ({
+  title,
+  description,
+  children,
+}: ProjectDetailChartCardProps) => {
+  return (
+    <section className="avid-glass-surface rounded-2xl p-5">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-black text-base-content">
+            {title}
+          </h2>
+          {description ? (
+            <p className="mt-1 text-xs leading-6 text-base-content/60">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        <div className="rounded-xl bg-primary/10 p-2 text-primary">
+          <ChartBarIcon className="h-5 w-5" />
+        </div>
+      </div>
+      <div className="text-base-content [&_.recharts-cartesian-axis-tick-value]:fill-[var(--app-base-content)] [&_.recharts-pie-label-text]:fill-[var(--app-base-content)] [&_.recharts-text]:font-bold">
+        {children}
+      </div>
+    </section>
+  );
+};
+
+const ProjectDetailEmptyChart = ({
+  text = 'داده‌ای برای نمایش وجود ندارد.',
+}: {
+  text?: string;
+}) => {
+  return (
+    <div className="flex h-[260px] items-center justify-center rounded-2xl border border-dashed border-base-300 text-sm text-base-content/55">
+      {text}
+    </div>
+  );
+};
+
+type ProjectDetailTooltipProps = {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+  formatter?: (value: number) => string;
+};
+
+const ProjectDetailTooltip = ({
+  active,
+  payload,
+  label,
+  formatter = formatNumber,
+}: ProjectDetailTooltipProps) => {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-right shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      {label ? (
+        <div className="mb-2 text-sm font-bold text-gray-900 dark:text-gray-100">
+          {label}
+        </div>
+      ) : null}
+      <div className="space-y-1">
+        {payload.map((entry) => (
+          <div
+            key={`${entry.name}-${entry.dataKey}`}
+            className="flex min-w-[140px] items-center justify-between gap-4 text-xs"
+          >
+            <span className="text-gray-500">{entry.name}</span>
+            <strong className="text-gray-900 dark:text-gray-100">
+              {formatter(Number(entry.value || 0))}
+            </strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const formatNumber = (value: number): string => {
+  return new Intl.NumberFormat('fa-IR').format(value || 0);
+};
+
+const formatPercent = (value: number): string => {
+  return `${formatNumber(value)}٪`;
+};
+
+const formatTaskPercentLabel = (value: number | null | undefined): string => {
+  const percent = Number(value || 0);
+
+  if (percent < 8) return '';
+
+  return formatPercent(percent);
+};
+
+const formatAmount = (value: number): string => {
+  return `${formatNumber(value)} ریال`;
+};
+
+const normalizeAmount = (value?: number | string | null): number => {
+  const amount = Number(value || 0);
+
+  if (!Number.isFinite(amount) || amount < 0) return 0;
+
+  return Math.round(amount);
+};
+
+const getPhaseFinancial = (phase: ProjectPhase) => {
+  const financial = phase.financial || {};
+
+  return {
+    potentialRevenue: normalizeAmount(
+      financial.potentialRevenueAmount ?? financial.expectedRevenue,
+    ),
+    potentialCost: normalizeAmount(
+      financial.potentialCostAmount ?? financial.expectedExpense,
+    ),
+    realizedRevenue: normalizeAmount(
+      financial.realizedRevenueAmount ?? financial.realizedRevenue,
+    ),
+    realizedCost: normalizeAmount(
+      financial.realizedCostAmount ?? financial.realizedExpense,
+    ),
+  };
+};
+
+const getDaysBetween = (start?: string | null, end?: string | null): number => {
+  if (!start || !end) return 0;
+
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return 0;
+  }
+
+  return Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
+};
+
+const getPhaseStatusLabel = (phase: ProjectPhase): string => {
+  const now = new Date();
+  const startDate = new Date(phase.startDate);
+  const endDate = new Date(phase.endDate);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return 'نامشخص';
+  }
+
+  if (now < startDate) return 'شروع‌نشده';
+  if (now > endDate) return 'پایان‌یافته';
+
+  return 'در جریان';
+};
+
 const DashboardProjectDetailsPage = () => {
   const router = useRouter();
   const { data: session } = useSession();
@@ -359,6 +578,7 @@ const DashboardProjectDetailsPage = () => {
 
   const [fileCategory, setFileCategory] = useState<ProjectFileCategory>('other');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [activeProjectTab, setActiveProjectTab] = useState<ProjectDetailTab>('summary');
 
   const taskRecorderRef = useRef<MediaRecorder | null>(null);
   const workLogRecorderRef = useRef<MediaRecorder | null>(null);
@@ -380,6 +600,271 @@ const DashboardProjectDetailsPage = () => {
   }, [visibleTasks]);
 
   const projectMembers = useMemo(() => getProjectMembers(project), [project]);
+
+  const projectPhases = useMemo(() => {
+    return Array.isArray(project?.phases) ? project.phases : [];
+  }, [project]);
+
+  const unassignedPhaseCount = useMemo(() => {
+    return projectPhases.filter((phase) => !phase.assignedUserIds?.length).length;
+  }, [projectPhases]);
+
+  const projectStaffingPending = useMemo(() => {
+    if (!project) return false;
+
+    return (
+      !getReferenceId(project.ownerId) ||
+      projectMembers.length === 0 ||
+      unassignedPhaseCount > 0
+    );
+  }, [project, projectMembers.length, unassignedPhaseCount]);
+
+  const phaseFinancialTotals = useMemo(() => {
+    return projectPhases.reduce(
+      (acc, phase) => {
+        const financial = getPhaseFinancial(phase);
+
+        acc.potentialRevenue += financial.potentialRevenue;
+        acc.potentialCost += financial.potentialCost;
+        acc.realizedRevenue += financial.realizedRevenue;
+        acc.realizedCost += financial.realizedCost;
+
+        return acc;
+      },
+      {
+        potentialRevenue: 0,
+        potentialCost: 0,
+        realizedRevenue: 0,
+        realizedCost: 0,
+      },
+    );
+  }, [projectPhases]);
+
+  const completedTasksCount = useMemo(() => {
+    return tasks.filter((task) => task.status === 'done').length;
+  }, [tasks]);
+
+  const blockedTasksCount = useMemo(() => {
+    return tasks.filter((task) => task.status === 'blocked').length;
+  }, [tasks]);
+
+  const overdueTasksCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return visibleTasks.filter((task) => {
+      if (!task.dueDate || task.status === 'done' || task.status === 'cancelled') return false;
+
+      const dueDate = new Date(task.dueDate);
+      dueDate.setHours(0, 0, 0, 0);
+
+      return !Number.isNaN(dueDate.getTime()) && dueDate < today;
+    }).length;
+  }, [visibleTasks]);
+
+  const taskCompletionRate = useMemo(() => {
+    if (!tasks.length) return 0;
+
+    return Math.round((completedTasksCount / tasks.length) * 100);
+  }, [completedTasksCount, tasks.length]);
+
+  const daysRemaining = useMemo(() => {
+    if (!project?.dueDate) return null;
+
+    const dueDate = new Date(project.dueDate);
+    const today = new Date();
+
+    if (Number.isNaN(dueDate.getTime())) return null;
+
+    dueDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    return Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
+  }, [project?.dueDate]);
+
+  const projectHealthSnapshot = useMemo(() => {
+    if (!project) {
+      return {
+        label: 'نامشخص',
+        toneClass: 'alert-info',
+        description: 'اطلاعات پروژه هنوز بارگذاری نشده است.',
+      };
+    }
+
+    if (project.status === 'completed') {
+      return {
+        label: 'تکمیل‌شده',
+        toneClass: 'alert-success',
+        description: 'پروژه در وضعیت بسته و تکمیل‌شده قرار دارد.',
+      };
+    }
+
+    if (overdueTasksCount > 0 || (daysRemaining !== null && daysRemaining < 0)) {
+      return {
+        label: 'نیازمند اقدام فوری',
+        toneClass: 'alert-error',
+        description: `${formatNumber(overdueTasksCount)} وظیفه عقب‌افتاده و ${formatNumber(Math.abs(daysRemaining || 0))} روز اختلاف زمانی ثبت شده است.`,
+      };
+    }
+
+    if (blockedTasksCount > 0 || (daysRemaining !== null && daysRemaining <= 7)) {
+      return {
+        label: 'در معرض ریسک',
+        toneClass: 'alert-warning',
+        description: blockedTasksCount > 0
+          ? `${formatNumber(blockedTasksCount)} وظیفه مسدود شده است.`
+          : `کمتر از ${formatNumber(7)} روز تا سررسید پروژه باقی مانده است.`,
+      };
+    }
+
+    return {
+      label: 'قابل کنترل',
+      toneClass: 'alert-success',
+      description: 'پروژه از نظر زمان و وظایف باز در وضعیت قابل کنترل است.',
+    };
+  }, [blockedTasksCount, daysRemaining, overdueTasksCount, project]);
+
+
+
+  const managerNextAction = useMemo(() => {
+    if (overdueTasksCount > 0 || (daysRemaining !== null && daysRemaining < 0)) {
+      return {
+        title: 'اولویت امروز: کنترل عقب‌افتادگی',
+        description: 'ابتدا وظایف عقب‌افتاده و تاریخ تحویل پروژه را بازبینی کنید؛ این پروژه از حالت عادی خارج شده است.',
+        toneClass: 'border-error/35 bg-error/10 text-error',
+      };
+    }
+
+    if (blockedTasksCount > 0) {
+      return {
+        title: 'اولویت امروز: رفع مانع',
+        description: 'وظایف مسدودشده باعث توقف جریان کار می‌شوند. مسئول هر کار باید مانع را ثبت یا رفع کند.',
+        toneClass: 'border-warning/35 bg-warning/10 text-warning',
+      };
+    }
+
+    if (projectStaffingPending) {
+      return {
+        title: 'اولویت امروز: تکمیل افراد و مسئولیت‌ها',
+        description: `مسئول پروژه، اعضا یا مسئولان ${formatNumber(unassignedPhaseCount)} فاز هنوز کامل نشده‌اند. تخصیص‌ها را در صفحه ویرایش پروژه ثبت کنید.`,
+        toneClass: 'border-warning/35 bg-warning/10 text-warning',
+      };
+    }
+
+    if (!projectPhases.length) {
+      return {
+        title: 'اولویت امروز: تکمیل ساختار فازها',
+        description: 'برای مدیریت دقیق زمان و مالی، پروژه باید حداقل یک فاز زمان‌بندی‌شده داشته باشد.',
+        toneClass: 'border-info/35 bg-info/10 text-info',
+      };
+    }
+
+    if (!notes.length) {
+      return {
+        title: 'اولویت امروز: ثبت اولین گزارش کار',
+        description: 'برای اینکه وضعیت پروژه قابل ردیابی باشد، حداقل یک گزارش پیشرفت باید ثبت شود.',
+        toneClass: 'border-primary/35 bg-primary/10 text-primary',
+      };
+    }
+
+    return {
+      title: 'اولویت امروز: پایش منظم',
+      description: 'پروژه فعلاً قابل کنترل است. روند پیشرفت، فازهای فعال و گزارش‌های کاری را به‌روزرسانی نگه دارید.',
+      toneClass: 'border-success/35 bg-success/10 text-success',
+    };
+  }, [
+    blockedTasksCount,
+    daysRemaining,
+    notes.length,
+    overdueTasksCount,
+    projectPhases.length,
+    projectStaffingPending,
+    unassignedPhaseCount,
+  ]);
+
+  const projectTaskStatusChartData = useMemo(() => {
+    const totalTasks = tasks.length;
+
+    return Object.entries(projectTaskStatusLabels)
+      .map(([status, label]) => {
+        const count = tasks.filter((task) => task.status === status).length;
+
+        return {
+          status,
+          label,
+          count,
+          percent: totalTasks ? Math.round((count / totalTasks) * 100) : 0,
+        };
+      })
+      .filter((item) => item.count > 0);
+  }, [tasks]);
+
+  const projectTaskPriorityChartData = useMemo(() => {
+    return priorityOptions
+      .map((priority) => ({
+        priority,
+        label: projectPriorityLabels[priority],
+        count: tasks.filter((task) => task.priority === priority).length,
+      }))
+      .filter((item) => item.count > 0);
+  }, [tasks]);
+
+  const projectPhaseDurationChartData = useMemo(() => {
+    return projectPhases.map((phase, index) => ({
+      name: `فاز ${index + 1}`,
+      title: phase.title,
+      days: getDaysBetween(phase.startDate, phase.endDate),
+      status: getPhaseStatusLabel(phase),
+    }));
+  }, [projectPhases]);
+
+  const projectProgressTrendChartData = useMemo(() => {
+    return notes
+      .filter((note) => note.progressPercent !== null && note.progressPercent !== undefined)
+      .slice()
+      .sort((first, second) => {
+        return new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime();
+      })
+      .map((note, index) => ({
+        label: `گزارش ${index + 1}`,
+        progress: Number(note.progressPercent || 0),
+      }));
+  }, [notes]);
+
+  const projectFileCategoryChartData = useMemo(() => {
+    const allFiles = [
+      ...files,
+      ...tasks.flatMap((task) => task.files || []),
+      ...notes.flatMap((note) => note.files || []),
+    ];
+
+    return fileCategoryOptions
+      .map((category) => ({
+        category,
+        label: projectFileCategoryLabels[category],
+        count: allFiles.filter((file) => file.category === category).length,
+      }))
+      .filter((item) => item.count > 0);
+  }, [files, notes, tasks]);
+
+  const projectTabBadges = useMemo<Record<ProjectDetailTab, string>>(() => {
+    const allProjectFilesCount = files.length + tasks.reduce((sum, task) => sum + Number(task.files?.length || task.attachmentCount || 0), 0) + notes.reduce((sum, note) => sum + Number(note.files?.length || 0), 0);
+
+    return {
+      summary: projectHealthSnapshot.label,
+      phases: formatNumber(projectPhases.length),
+      members: formatNumber(projectMembers.length),
+      tasks: formatNumber(openTasks.length),
+      reports: formatNumber(notes.length),
+      files: formatNumber(allProjectFilesCount),
+      charts: formatNumber(projectTaskStatusChartData.length + projectPhaseDurationChartData.length + projectProgressTrendChartData.length),
+    };
+  }, [files.length, notes, openTasks.length, projectHealthSnapshot.label, projectMembers.length, projectPhases.length, projectPhaseDurationChartData.length, projectProgressTrendChartData.length, projectTaskStatusChartData.length, tasks]);
+
+  const activeProjectTabConfig = useMemo(() => {
+    return projectDetailTabs.find((tab) => tab.key === activeProjectTab) || projectDetailTabs[0];
+  }, [activeProjectTab]);
+
 
   const activeProjectRoles = useMemo(() => {
     return projectRoles.filter((role) => role.isActive !== false);
@@ -1041,42 +1526,37 @@ const DashboardProjectDetailsPage = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6" dir="rtl">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div>
-            <Link
-              href="/dashboard/projects"
-              className="mb-3 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary"
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-              بازگشت به پروژه‌ها
-            </Link>
-
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {project?.title || 'پروژه'}
-            </h1>
-
-            <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-              {project?.description || 'برای این پروژه توضیحی ثبت نشده است.'}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {projectId ? (
-              <Link href={`/dashboard/projects/${projectId}/finance`} className="btn btn-primary">
-                <BanknotesIcon className="h-5 w-5" />
-                مالی پروژه
+        <div className="avid-glass-surface rounded-3xl p-5">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div>
+              <Link
+                href="/dashboard/projects"
+                className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-base-content/55 hover:text-primary"
+              >
+                <ArrowLeftIcon className="h-4 w-4" />
+                بازگشت به پروژه‌ها
               </Link>
-            ) : null}
 
-            <Link href="/dashboard/calendar" className="btn btn-outline">
-              <CalendarDaysIcon className="h-5 w-5" />
-              مشاهده در تقویم
-            </Link>
+              <h1 className="text-2xl font-black text-base-content lg:text-3xl">
+                {project?.title || 'پروژه'}
+              </h1>
 
-            <button className="btn btn-ghost" onClick={loadProjectWorkspace}>
-              <ArrowPathIcon className="h-5 w-5" />
-              بروزرسانی
-            </button>
+              <p className="mt-2 max-w-3xl text-sm leading-7 text-base-content/60">
+                {project?.description || 'برای این پروژه توضیحی ثبت نشده است.'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href="/dashboard/calendar" className="btn btn-outline">
+                <CalendarDaysIcon className="h-5 w-5" />
+                مشاهده در تقویم
+              </Link>
+
+              <button className="btn btn-ghost" onClick={loadProjectWorkspace} type="button">
+                <ArrowPathIcon className="h-5 w-5" />
+                بروزرسانی
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1086,10 +1566,32 @@ const DashboardProjectDetailsPage = () => {
           </div>
         ) : null}
 
+        {project && projectStaffingPending ? (
+          <div className="alert alert-warning items-start">
+            <UserGroupIcon className="h-6 w-6 shrink-0" />
+            <div className="flex-1">
+              <h2 className="font-black">تخصیص افراد و مسئولیت‌ها کامل نیست</h2>
+              <p className="mt-1 text-sm leading-7">
+                این پروژه بدون اطلاعات پرسنلی از اکسل وارد شده یا بخشی از تخصیص‌ها ناقص است.
+                مسئول پروژه، اعضا و مسئولان فازها را از داخل سامانه انتخاب کنید.
+              </p>
+              {canManageProject ? (
+                <Link
+                  href={`/dashboard/projects/${projectId}/edit`}
+                  className="btn btn-warning btn-sm mt-3"
+                >
+                  <PencilSquareIcon className="h-4 w-4" />
+                  تکمیل افراد و مسئولیت‌ها
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {project ? (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+              <div className="avid-glass-surface rounded-3xl p-5">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <ClockIcon className="h-5 w-5" />
                   شروع پروژه
@@ -1100,7 +1602,7 @@ const DashboardProjectDetailsPage = () => {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+              <div className="avid-glass-surface rounded-3xl p-5">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <CalendarDaysIcon className="h-5 w-5" />
                   موعد تحویل
@@ -1111,7 +1613,7 @@ const DashboardProjectDetailsPage = () => {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+              <div className="avid-glass-surface rounded-3xl p-5">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <FlagIcon className="h-5 w-5" />
                   وظایف باز
@@ -1122,7 +1624,7 @@ const DashboardProjectDetailsPage = () => {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+              <div className="avid-glass-surface rounded-3xl p-5">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <CheckCircleIcon className="h-5 w-5" />
                   وظایف امروز
@@ -1134,7 +1636,482 @@ const DashboardProjectDetailsPage = () => {
               </div>
             </div>
 
-            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+            <div className="avid-glass-surface rounded-3xl p-2">
+              <div className="mb-2 flex flex-col gap-2 px-2 pt-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-black text-primary">فضای کاری پروژه</p>
+                  <h2 className="text-base font-black text-base-content">{activeProjectTabConfig.label}</h2>
+                </div>
+                <span className="badge badge-primary badge-outline rounded-xl px-3 py-3 text-xs font-black">
+                  فقط همین بخش نمایش داده می‌شود
+                </span>
+              </div>
+
+              <div role="tablist" className="avid-tab-strip" aria-label="بخش‌های جزئیات پروژه">
+                {projectDetailTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActiveTab = activeProjectTab === tab.key;
+
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      role="tab"
+                      className={`avid-tab-button ${isActiveTab ? 'avid-tab-button-active' : ''}`}
+                      aria-selected={isActiveTab}
+                      onClick={() => setActiveProjectTab(tab.key)}
+                    >
+                      <span className="flex items-center gap-3 text-right">
+                        <span className="avid-tab-icon shrink-0">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="flex flex-col items-start gap-0.5">
+                          <span className="text-sm font-black">{tab.label}</span>
+                          <span className="max-w-36 truncate text-[10px] font-bold opacity-75">{tab.hint}</span>
+                        </span>
+                        <span className={`badge badge-sm rounded-lg border-0 ${isActiveTab ? 'bg-white/20 text-current' : 'bg-base-200 text-base-content/60'}`}>
+                          {projectTabBadges[tab.key]}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {activeProjectTab === 'summary' ? (
+              <section className="avid-glass-surface rounded-3xl p-5">
+                <div className={`alert ${projectHealthSnapshot.toneClass} items-start`}>
+                  <ExclamationTriangleIcon className="h-6 w-6 shrink-0" />
+                  <div>
+                    <h2 className="text-lg font-black">{projectHealthSnapshot.label}</h2>
+                    <p className="mt-1 text-sm leading-7">{projectHealthSnapshot.description}</p>
+                  </div>
+                </div>
+
+                <div className={`mt-4 rounded-3xl border p-4 ${managerNextAction.toneClass}`}>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-xs font-black opacity-75">پیشنهاد تصمیم مدیریتی</p>
+                      <h3 className="mt-1 text-base font-black">{managerNextAction.title}</h3>
+                      <p className="mt-1 text-sm font-bold leading-7 opacity-80">{managerNextAction.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm rounded-xl border-0 bg-base-100/75 text-base-content hover:bg-base-100"
+                      onClick={() => {
+                        if (projectStaffingPending && canManageProject) {
+                          router.push(`/dashboard/projects/${projectId}/edit`);
+                          return;
+                        }
+
+                        setActiveProjectTab(
+                          overdueTasksCount || blockedTasksCount
+                            ? 'tasks'
+                            : !projectPhases.length
+                              ? 'phases'
+                              : !notes.length
+                                ? 'reports'
+                                : 'summary',
+                        );
+                      }}
+                    >
+                      {projectStaffingPending && canManageProject
+                        ? 'تکمیل تخصیص‌ها'
+                        : 'رفتن به بخش مرتبط'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="rounded-3xl border border-base-300 bg-base-200/50 p-5">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="text-base font-black text-base-content">نمای یک‌نگاه مدیر</h3>
+                        <p className="mt-1 text-sm leading-7 text-base-content/60">
+                          این بخش فقط شاخص‌های تصمیم‌ساز پروژه را نشان می‌دهد؛ جزئیات در تب‌های بعدی قرار گرفته‌اند.
+                        </p>
+                      </div>
+                      <div className="radial-progress bg-base-100 text-primary shadow-sm" style={{ '--value': taskCompletionRate, '--size': '5.5rem', '--thickness': '8px' } as any} role="progressbar">
+                        {formatNumber(taskCompletionRate)}٪
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="stat rounded-2xl bg-base-100 shadow-sm">
+                        <div className="stat-title text-xs font-bold">تکمیل وظایف</div>
+                        <div className="stat-value text-2xl text-primary">{formatNumber(completedTasksCount)}</div>
+                        <div className="stat-desc">از {formatNumber(tasks.length)} وظیفه</div>
+                      </div>
+                      <div className="stat rounded-2xl bg-base-100 shadow-sm">
+                        <div className="stat-title text-xs font-bold">عقب‌افتاده</div>
+                        <div className={`stat-value text-2xl ${overdueTasksCount ? 'text-error' : 'text-success'}`}>{formatNumber(overdueTasksCount)}</div>
+                        <div className="stat-desc">وظیفه نیازمند پیگیری</div>
+                      </div>
+                      <div className="stat rounded-2xl bg-base-100 shadow-sm">
+                        <div className="stat-title text-xs font-bold">روز تا سررسید</div>
+                        <div className={`stat-value text-2xl ${daysRemaining !== null && daysRemaining < 0 ? 'text-error' : 'text-base-content'}`}>
+                          {daysRemaining === null ? '—' : formatNumber(daysRemaining)}
+                        </div>
+                        <div className="stat-desc">موعد: {formatDate(project.dueDate)}</div>
+                      </div>
+                      <div className="stat rounded-2xl bg-base-100 shadow-sm">
+                        <div className="stat-title text-xs font-bold">فازهای پروژه</div>
+                        <div className="stat-value text-2xl text-info">{formatNumber(projectPhases.length)}</div>
+                        <div className="stat-desc">قابل مشاهده در تب فازها</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-base-300 bg-base-200/50 p-5">
+                    <h3 className="text-base font-black text-base-content">جمع مالی ساده فازها</h3>
+                    <p className="mt-1 text-sm leading-7 text-base-content/60">
+                      این اعداد از مالی ساده فازها آمده و برای تصمیم سریع مدیر نمایش داده می‌شود.
+                    </p>
+                    <div className="mt-5 space-y-3">
+                      <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
+                        <span className="font-bold text-base-content/60">درآمد واقعی</span>
+                        <strong className="text-success">{formatAmount(phaseFinancialTotals.realizedRevenue)}</strong>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
+                        <span className="font-bold text-base-content/60">هزینه واقعی</span>
+                        <strong className="text-error">{formatAmount(phaseFinancialTotals.realizedCost)}</strong>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
+                        <span className="font-bold text-base-content/60">مانده واقعی</span>
+                        <strong className={(phaseFinancialTotals.realizedRevenue - phaseFinancialTotals.realizedCost) >= 0 ? 'text-success' : 'text-error'}>
+                          {formatAmount(phaseFinancialTotals.realizedRevenue - phaseFinancialTotals.realizedCost)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {activeProjectTab === 'charts' ? (
+              <section className="avid-glass-surface rounded-3xl p-5">
+                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-black text-base-content">
+                      تحلیل اختصاصی پروژه
+                    </h2>
+                    <p className="mt-1 text-sm leading-7 text-base-content/55">
+                      نمودارها برای خوانایی فارسی/راست‌به‌چپ با راهنمای داخلی، محورهای خوانا و بدون خروج متن از محدوده طراحی شده‌اند.
+                    </p>
+                  </div>
+                  <span className="badge badge-primary badge-lg">نمای فعال: نمودارها</span>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-2">
+                <ProjectDetailChartCard
+                  title="درصد وضعیت وظایف پروژه"
+                  description="نسبت هر وضعیت وظیفه برای همین پروژه به‌صورت درصدی نمایش داده می‌شود."
+                >
+                  {projectTaskStatusChartData.length ? (
+                    <div className="h-[280px]" dir="ltr">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={projectTaskStatusChartData} margin={{ top: 10, right: 8, left: 8, bottom: 8 }}>
+                          <CartesianGrid stroke={PROJECT_DETAIL_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="label" tick={projectDetailAxisTick} interval={0} />
+                          <YAxis allowDecimals={false} tick={projectDetailAxisTick} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+                          <Tooltip content={<ProjectDetailTooltip formatter={(value) => formatPercent(value)} />} />
+                          <Bar dataKey="percent" name="درصد وظایف" radius={[8, 8, 0, 0]}>
+                            {projectTaskStatusChartData.map((item, index) => (
+                              <Cell
+                                key={item.status}
+                                fill={PROJECT_DETAIL_CHART_COLORS[index % PROJECT_DETAIL_CHART_COLORS.length]}
+                              />
+                            ))}
+                            <LabelList dataKey="percent" position="top" formatter={formatTaskPercentLabel} fill="var(--app-base-content)" fontSize={12} fontWeight={900} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <ProjectDetailEmptyChart text="برای این پروژه هنوز وظیفه‌ای ثبت نشده است." />
+                  )}
+                </ProjectDetailChartCard>
+
+                <ProjectDetailChartCard
+                  title="اولویت وظایف پروژه"
+                  description="ترکیب سطح ریسک وظایف همین پروژه."
+                >
+                  {projectTaskPriorityChartData.length ? (
+                    <div className="h-[280px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={projectTaskPriorityChartData}
+                            dataKey="count"
+                            nameKey="label"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={58}
+                            outerRadius={96}
+                            paddingAngle={3}
+                            labelLine={false}
+                            label={false}
+                          >
+                            {projectTaskPriorityChartData.map((item, index) => (
+                              <Cell
+                                key={item.priority}
+                                fill={PROJECT_DETAIL_CHART_COLORS[index % PROJECT_DETAIL_CHART_COLORS.length]}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<ProjectDetailTooltip />} />
+                          <Legend iconType="circle" align="right" verticalAlign="bottom" wrapperStyle={{ direction: 'rtl', fontSize: 12, fontWeight: 800, paddingTop: 12 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <ProjectDetailEmptyChart text="برای وظایف این پروژه اولویتی برای نمایش وجود ندارد." />
+                  )}
+                </ProjectDetailChartCard>
+
+                <ProjectDetailChartCard
+                  title="مدت فازهای پروژه"
+                  description="مقایسه مدت زمان برنامه‌ریزی‌شده هر فاز، بدون نمایش افراد هر فاز."
+                >
+                  {projectPhaseDurationChartData.length ? (
+                    <div className="h-[300px]" dir="ltr">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={projectPhaseDurationChartData}
+                          layout="vertical"
+                          margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+                        >
+                          <CartesianGrid stroke={PROJECT_DETAIL_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" allowDecimals={false} tick={projectDetailAxisTick} />
+                          <YAxis dataKey="name" type="category" orientation="right" width={96} tick={projectDetailAxisTick} />
+                          <Tooltip content={<ProjectDetailTooltip formatter={(value) => `${formatNumber(value)} روز`} />} />
+                          <Bar dataKey="days" name="مدت فاز" fill="#2563eb" radius={[8, 8, 8, 8]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <ProjectDetailEmptyChart text="برای این پروژه فازی تعریف نشده است." />
+                  )}
+                </ProjectDetailChartCard>
+
+                <ProjectDetailChartCard
+                  title="روند پیشرفت گزارش‌شده"
+                  description="درصد پیشرفت‌هایی که در گزارش‌های کاری همین پروژه ثبت شده‌اند."
+                >
+                  {projectProgressTrendChartData.length ? (
+                    <div className="h-[300px]" dir="ltr">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={projectProgressTrendChartData} margin={{ top: 10, right: 8, left: 8, bottom: 8 }}>
+                          <CartesianGrid stroke={PROJECT_DETAIL_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="label" tick={projectDetailAxisTick} />
+                          <YAxis domain={[0, 100]} tick={projectDetailAxisTick} tickFormatter={(value) => `${value}%`} />
+                          <Tooltip content={<ProjectDetailTooltip formatter={(value) => `${formatNumber(value)}٪`} />} />
+                          <Line
+                            type="monotone"
+                            dataKey="progress"
+                            name="درصد پیشرفت"
+                            stroke="#16a34a"
+                            strokeWidth={3}
+                            dot={{ r: 4 }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <ProjectDetailEmptyChart text="هنوز گزارشی با درصد پیشرفت ثبت نشده است." />
+                  )}
+                </ProjectDetailChartCard>
+
+                <div className="xl:col-span-2">
+                  <ProjectDetailChartCard
+                    title="دسته‌بندی فایل‌های پروژه"
+                    description="تعداد فایل‌های ثبت‌شده برای پروژه، وظایف و گزارش‌های همین پروژه بر اساس دسته‌بندی."
+                  >
+                    {projectFileCategoryChartData.length ? (
+                      <div className="h-[300px]" dir="ltr">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={projectFileCategoryChartData} margin={{ top: 10, right: 8, left: 8, bottom: 8 }}>
+                            <CartesianGrid stroke={PROJECT_DETAIL_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="label" tick={projectDetailAxisTick} interval={0} />
+                            <YAxis allowDecimals={false} tick={projectDetailAxisTick} />
+                            <Tooltip content={<ProjectDetailTooltip />} />
+                            <Bar dataKey="count" name="تعداد فایل" radius={[8, 8, 0, 0]}>
+                              {projectFileCategoryChartData.map((item, index) => (
+                                <Cell
+                                  key={item.category}
+                                  fill={PROJECT_DETAIL_CHART_COLORS[index % PROJECT_DETAIL_CHART_COLORS.length]}
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <ProjectDetailEmptyChart text="هنوز فایلی برای این پروژه ثبت نشده است." />
+                    )}
+                  </ProjectDetailChartCard>
+                </div>
+              </div>
+              </section>
+            ) : null}
+
+            {activeProjectTab === 'phases' ? (
+              <section id="project-phases" className="avid-glass-surface rounded-3xl p-5">
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                    فازهای پروژه
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+هر فاز در یک ردیف کامل نمایش داده می‌شود؛ اطلاعات مالی این بخش ساده و فقط شامل درآمد/هزینه پیش‌بینی‌شده و واقعی است.
+                  </p>
+                </div>
+
+                {canManageProject && projectId ? (
+                  <Link href={`/dashboard/projects/${projectId}/edit`} className="btn btn-outline btn-sm">
+                    <PencilSquareIcon className="h-4 w-4" />
+                    ویرایش فازها
+                  </Link>
+                ) : null}
+              </div>
+
+              {projectPhases.length ? (
+                <>
+                  <div className="mb-4 grid gap-3 md:grid-cols-4">
+                    <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-950">
+                      <div className="text-xs text-gray-500">درآمد پیش‌بینی‌شده</div>
+                      <div className="mt-1 font-bold text-gray-900 dark:text-gray-100">
+                        {formatAmount(phaseFinancialTotals.potentialRevenue)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-950">
+                      <div className="text-xs text-gray-500">هزینه پیش‌بینی‌شده</div>
+                      <div className="mt-1 font-bold text-gray-900 dark:text-gray-100">
+                        {formatAmount(phaseFinancialTotals.potentialCost)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-success/10 p-4 text-success">
+                      <div className="text-xs">درآمد واقعی</div>
+                      <div className="mt-1 font-bold">
+                        {formatAmount(phaseFinancialTotals.realizedRevenue)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-error/10 p-4 text-error">
+                      <div className="text-xs">هزینه واقعی</div>
+                      <div className="mt-1 font-bold">
+                        {formatAmount(phaseFinancialTotals.realizedCost)}
+                      </div>
+                    </div>
+                  </div>
+
+                <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
+                  <div className="hidden grid-cols-[70px_1.2fr_130px_130px_170px_170px_120px] gap-3 bg-gray-50 px-4 py-3 text-xs font-bold text-gray-500 dark:bg-gray-950 dark:text-gray-400 lg:grid">
+                    <span>شماره</span>
+                    <span>عنوان فاز</span>
+                    <span>شروع</span>
+                    <span>پایان</span>
+                    <span>مالی ساده</span>
+                    <span>واقعی</span>
+                    <span>وضعیت</span>
+                  </div>
+
+                  <div className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {projectPhases.map((phase, index) => {
+                      const phaseId = getPhaseId(phase);
+                      const phaseStatus = getPhaseStatusLabel(phase);
+                      const financial = getPhaseFinancial(phase);
+
+                      return (
+                        <div
+                          key={phaseId || `${phase.title}-${index}`}
+                          className="grid gap-3 bg-white px-4 py-4 text-sm transition hover:bg-primary/5 dark:bg-gray-900 dark:hover:bg-primary/10 lg:grid-cols-[70px_1.2fr_130px_130px_170px_170px_120px] lg:items-center"
+                        >
+                          <div className="inline-flex w-fit rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                            فاز {index + 1}
+                          </div>
+
+                          <div className="min-w-0">
+                            <h3 className="truncate font-bold text-gray-900 dark:text-gray-100">
+                              {phase.title}
+                            </h3>
+                            {phase.description ? (
+                              <p className="mt-1 line-clamp-1 text-xs text-gray-500">
+                                {phase.description}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="text-gray-700 dark:text-gray-200">
+                            <span className="ml-1 text-xs text-gray-500 lg:hidden">شروع:</span>
+                            {formatDate(phase.startDate)}
+                          </div>
+
+                          <div className="text-gray-700 dark:text-gray-200">
+                            <span className="ml-1 text-xs text-gray-500 lg:hidden">پایان:</span>
+                            {formatDate(phase.endDate)}
+                          </div>
+
+                          <div className="space-y-1 text-xs text-gray-700 dark:text-gray-200">
+                            <div>
+                              <span className="text-gray-500 lg:hidden">پیش‌بینی درآمد: </span>
+                              درآمد: <strong>{formatAmount(financial.potentialRevenue)}</strong>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 lg:hidden">پیش‌بینی هزینه: </span>
+                              هزینه: <strong>{formatAmount(financial.potentialCost)}</strong>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 text-xs text-gray-700 dark:text-gray-200">
+                            <div>
+                              <span className="text-gray-500 lg:hidden">درآمد واقعی: </span>
+                              درآمد: <strong>{formatAmount(financial.realizedRevenue)}</strong>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 lg:hidden">هزینه واقعی: </span>
+                              هزینه: <strong>{formatAmount(financial.realizedCost)}</strong>
+                            </div>
+                            {canManageProject && phaseId ? (
+                              <Link
+                                href={`/dashboard/projects/${projectId}/phases/${phaseId}`}
+                                className="inline-flex text-xs font-bold text-primary hover:underline"
+                              >
+                                ثبت مالی فاز
+                              </Link>
+                            ) : null}
+                          </div>
+
+                          <div>
+                            <span
+                              className={
+                                phaseStatus === 'در جریان'
+                                  ? 'badge badge-primary'
+                                  : phaseStatus === 'پایان‌یافته'
+                                    ? 'badge badge-success'
+                                    : 'badge badge-outline'
+                              }
+                            >
+                              {phaseStatus}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700">
+                  هنوز فازی برای این پروژه تعریف نشده است.
+                </div>
+              )}
+            </section>
+            ) : null}
+
+            {activeProjectTab === 'members' ? (
+              <div id="project-members" className="avid-glass-surface rounded-3xl p-5">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
@@ -1220,35 +2197,23 @@ const DashboardProjectDetailsPage = () => {
                             ) : null}
 
                             <div className="grid gap-2 sm:grid-cols-2">
-                              <label className="form-control">
-                                <span className="label label-text text-xs">شروع</span>
-                                <input
-                                  type="date"
-                                  className="input input-bordered bg-white dark:bg-gray-900"
-                                  value={memberForm.startedAt}
-                                  onChange={(event) =>
-                                    setMemberForm((previous) => ({
-                                      ...previous,
-                                      startedAt: event.target.value,
-                                    }))
-                                  }
-                                />
-                              </label>
+                              <ShamsiDateInput
+                                label="شروع"
+                                value={memberForm.startedAt}
+                                onChange={(value) =>
+                                  setMemberForm((previous) => ({ ...previous, startedAt: value }))
+                                }
+                                inputClassName="bg-white dark:bg-gray-900"
+                              />
 
-                              <label className="form-control">
-                                <span className="label label-text text-xs">پایان احتمالی</span>
-                                <input
-                                  type="date"
-                                  className="input input-bordered bg-white dark:bg-gray-900"
-                                  value={memberForm.expectedFinishedAt}
-                                  onChange={(event) =>
-                                    setMemberForm((previous) => ({
-                                      ...previous,
-                                      expectedFinishedAt: event.target.value,
-                                    }))
-                                  }
-                                />
-                              </label>
+                              <ShamsiDateInput
+                                label="پایان احتمالی"
+                                value={memberForm.expectedFinishedAt}
+                                onChange={(value) =>
+                                  setMemberForm((previous) => ({ ...previous, expectedFinishedAt: value }))
+                                }
+                                inputClassName="bg-white dark:bg-gray-900"
+                              />
                             </div>
 
                             <div className="flex justify-end gap-2">
@@ -1283,16 +2248,26 @@ const DashboardProjectDetailsPage = () => {
                     );
                   })
                 ) : (
-                  <span className="text-sm text-gray-500">
-                    هنوز کاربری به پروژه تخصیص داده نشده است.
-                  </span>
+                  <div className="rounded-2xl border border-dashed border-warning/40 bg-warning/5 p-5 text-sm text-base-content/65 lg:col-span-2 xl:col-span-3">
+                    <p>هنوز کاربری به پروژه تخصیص داده نشده است.</p>
+                    {canManageProject ? (
+                      <Link
+                        href={`/dashboard/projects/${projectId}/edit`}
+                        className="btn btn-warning btn-sm mt-3"
+                      >
+                        <UserGroupIcon className="h-4 w-4" />
+                        انتخاب مسئول و اعضا
+                      </Link>
+                    ) : null}
+                  </div>
                 )}
               </div>
             </div>
+            ) : null}
 
-            <div className="grid gap-6 xl:grid-cols-3">
-              <div className="space-y-6 xl:col-span-2">
-                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+            <div className="grid gap-6">
+              <div className={activeProjectTab === 'tasks' ? 'space-y-6' : 'hidden'}>
+                <div id="project-tasks" className="avid-glass-surface rounded-3xl p-5">
                   <div className="mb-5">
                     <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
                       {editingTaskId
@@ -1385,28 +2360,20 @@ const DashboardProjectDetailsPage = () => {
                         )}
                       </select>
 
-                      <input
-                        type="date"
-                        className="input input-bordered"
+                      <ShamsiDateInput
                         value={taskForm.startDate}
-                        onChange={(event) =>
-                          setTaskForm((previous) => ({
-                            ...previous,
-                            startDate: event.target.value,
-                          }))
+                        onChange={(value) =>
+                          setTaskForm((previous) => ({ ...previous, startDate: value }))
                         }
+                        placeholder="تاریخ شروع"
                       />
 
-                      <input
-                        type="date"
-                        className="input input-bordered"
+                      <ShamsiDateInput
                         value={taskForm.dueDate}
-                        onChange={(event) =>
-                          setTaskForm((previous) => ({
-                            ...previous,
-                            dueDate: event.target.value,
-                          }))
+                        onChange={(value) =>
+                          setTaskForm((previous) => ({ ...previous, dueDate: value }))
                         }
+                        placeholder="موعد انجام"
                       />
 
                       <textarea
@@ -1624,7 +2591,7 @@ const DashboardProjectDetailsPage = () => {
               </div>
 
               <div className="space-y-6">
-                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                <div id="project-reports" className={activeProjectTab === 'reports' ? 'avid-glass-surface rounded-3xl p-5' : 'hidden'}>
                   <div className="mb-4 flex items-center gap-2">
                     <DocumentTextIcon className="h-5 w-5 text-primary" />
 
@@ -1762,7 +2729,7 @@ const DashboardProjectDetailsPage = () => {
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+                <div id="project-files" className={activeProjectTab === 'files' ? 'avid-glass-surface rounded-3xl p-5' : 'hidden'}>
                   <div className="mb-4 flex items-center gap-2">
                     <DocumentArrowUpIcon className="h-5 w-5 text-primary" />
 

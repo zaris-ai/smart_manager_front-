@@ -108,13 +108,6 @@ const normalizePayload = (payload: UserPayload | Partial<UserPayload>) => {
     normalizedPayload.status = normalizedStatus;
   }
 
-  if ('telegramUsername' in payload) {
-    normalizedPayload.telegramUsername =
-      typeof payload.telegramUsername === 'string'
-        ? payload.telegramUsername.trim().replace(/^@/, '').toLowerCase()
-        : payload.telegramUsername;
-  }
-
   return normalizedPayload;
 };
 

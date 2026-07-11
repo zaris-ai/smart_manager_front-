@@ -3,14 +3,22 @@ import {
   ArrowPathIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
+  EllipsisVerticalIcon,
   EyeIcon,
   EyeSlashIcon,
   NoSymbolIcon,
   PencilSquareIcon,
   PlusIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 
+import {
+  AdminStatCard,
+  DashboardPageHeader,
+  FilterBar,
+  SectionCard,
+} from '@/components/common';
 import { DashboardLayout } from '@/components/layouts';
 import { RoleHelpPanel, UserFormModal } from '@/components/users';
 import { userService } from '@/services/user.service';
@@ -25,6 +33,7 @@ import {
   userStatusLabels,
 } from '@/types/user';
 import { withAuth } from '@/utils';
+import { confirmToast } from '@/utils/sonner-confirm';
 
 const statusBadgeClass = (status?: string): string => {
   switch (normalizeUserStatus(status)) {
@@ -52,12 +61,25 @@ const roleBadgeClass = (role?: string): string => {
   }
 };
 
+const getInitials = (name: string): string => {
+  const cleanedName = name.trim();
+
+  if (!cleanedName) return '؟';
+
+  return cleanedName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('');
+};
+
 const DashboardUsersPage = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
-  const [showHelp, setShowHelp] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
 
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
@@ -65,21 +87,6 @@ const DashboardUsersPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [processingUserId, setProcessingUserId] = useState('');
-
-  const boardCount = useMemo(() => {
-    return users.filter((user) => normalizeUserRole(user.role) === 'board')
-      .length;
-  }, [users]);
-
-  const managersCount = useMemo(() => {
-    return users.filter((user) => normalizeUserRole(user.role) === 'manager')
-      .length;
-  }, [users]);
-
-  const expertsCount = useMemo(() => {
-    return users.filter((user) => normalizeUserRole(user.role) === 'expert')
-      .length;
-  }, [users]);
 
   const activeUsersCount = useMemo(() => {
     return users.filter((user) => user.isActive).length;
@@ -162,33 +169,26 @@ const DashboardUsersPage = () => {
       return;
     }
 
-    toast.warning(`آیا از غیرفعال‌سازی کاربر «${getUserDisplayName(user)}» مطمئن هستید؟`, {
-      duration: 8000,
-      action: {
-        label: 'غیرفعال کن',
-        onClick: async () => {
-          try {
-            setProcessingUserId(userId);
-
-            await userService.deactivateUser(userId);
-            toast.success(`کاربر «${getUserDisplayName(user)}» غیرفعال شد`);
-            await loadUsers();
-          } catch (err) {
-            toast.error(
-              err instanceof Error ? err.message : 'خطا در غیرفعال‌سازی کاربر',
-            );
-          } finally {
-            setProcessingUserId('');
-          }
-        },
-      },
-      cancel: {
-        label: 'انصراف',
-        onClick: () => {
-          toast.info('عملیات غیرفعال‌سازی لغو شد');
-        },
-      },
+    const confirmed = await confirmToast({
+      title: `غیرفعال‌سازی کاربر «${getUserDisplayName(user)}»`,
+      description: 'کاربر پس از غیرفعال شدن دیگر نباید در جریان‌های اجرایی جدید استفاده شود.',
+      confirmText: 'غیرفعال کن',
+      variant: 'warning',
     });
+
+    if (!confirmed) return;
+
+    try {
+      setProcessingUserId(userId);
+
+      await userService.deactivateUser(userId);
+      toast.success(`کاربر «${getUserDisplayName(user)}» غیرفعال شد`);
+      await loadUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'خطا در غیرفعال‌سازی کاربر');
+    } finally {
+      setProcessingUserId('');
+    }
   };
 
   const handleToggleUserStatus = async (user: AppUser) => {
@@ -204,90 +204,71 @@ const DashboardUsersPage = () => {
 
   return (
     <DashboardLayout>
-      <Toaster richColors position="top-center" closeButton />
-
       <div className="space-y-6" dir="rtl">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              مدیریت کاربران
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              ایجاد، ویرایش، فعال‌سازی، غیرفعال‌سازی و اتصال کاربران به ربات تلگرام.
-            </p>
-          </div>
+        <DashboardPageHeader
+          eyebrow="مدیریت کاربران"
+          title="کاربران سامانه"
+          description="این صفحه به‌صورت جدول مدیریتی طراحی شده تا ایجاد، ویرایش و تغییر وضعیت کاربران بدون شلوغی بصری انجام شود."
+          actions={
+            <>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowHelp((value) => !value)}
+              >
+                {showHelp ? (
+                  <EyeSlashIcon className="h-5 w-5" />
+                ) : (
+                  <EyeIcon className="h-5 w-5" />
+                )}
+                {showHelp ? 'مخفی کردن راهنما' : 'نمایش راهنما'}
+              </button>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => setShowHelp((value) => !value)}
-            >
-              {showHelp ? (
-                <EyeSlashIcon className="h-5 w-5" />
-              ) : (
-                <EyeIcon className="h-5 w-5" />
-              )}
-              {showHelp ? 'مخفی کردن راهنما' : 'نمایش راهنما'}
-            </button>
-
-            <button type="button" className="btn btn-primary" onClick={openCreateModal}>
-              <PlusIcon className="h-5 w-5" />
-              کاربر جدید
-            </button>
-          </div>
-        </div>
+              <button type="button" className="btn btn-primary" onClick={openCreateModal}>
+                <PlusIcon className="h-5 w-5" />
+                کاربر جدید
+              </button>
+            </>
+          }
+        />
 
         {showHelp ? <RoleHelpPanel /> : null}
 
-        <div className="grid gap-4 md:grid-cols-5">
-          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-            <div className="text-sm text-gray-500">هیئت مدیره</div>
-            <div className="mt-2 text-3xl font-bold text-secondary">
-              {boardCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-            <div className="text-sm text-gray-500">مدیران</div>
-            <div className="mt-2 text-3xl font-bold text-primary">
-              {managersCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-            <div className="text-sm text-gray-500">کارشناسان</div>
-            <div className="mt-2 text-3xl font-bold text-info">
-              {expertsCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-            <div className="text-sm text-gray-500">کاربران فعال</div>
-            <div className="mt-2 text-3xl font-bold text-success">
-              {activeUsersCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-            <div className="text-sm text-gray-500">متصل به تلگرام</div>
-            <div className="mt-2 text-3xl font-bold text-secondary">
-              {telegramLinkedCount}
-            </div>
-          </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <AdminStatCard
+            title="کل کاربران"
+            value={users.length}
+            description="کاربران دریافت‌شده با فیلتر فعلی"
+            icon={UserGroupIcon}
+            tone="primary"
+          />
+          <AdminStatCard
+            title="کاربران فعال"
+            value={activeUsersCount}
+            description="حساب‌هایی که امکان فعالیت دارند"
+            icon={CheckCircleIcon}
+            tone="success"
+          />
+          <AdminStatCard
+            title="متصل به تلگرام"
+            value={telegramLinkedCount}
+            description="کاربران دارای اتصال پیام‌رسان"
+            icon={ChatBubbleLeftRightIcon}
+            tone="info"
+          />
         </div>
 
-        <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
+        <FilterBar>
           <div className="grid gap-3 lg:grid-cols-4">
             <input
-              className="input input-bordered"
+              className="input input-bordered bg-base-100"
               placeholder="جستجو در کاربران"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
 
             <select
-              className="select select-bordered"
+              className="select select-bordered bg-base-100"
               value={role}
               onChange={(event) => setRole(event.target.value)}
             >
@@ -298,7 +279,7 @@ const DashboardUsersPage = () => {
             </select>
 
             <select
-              className="select select-bordered"
+              className="select select-bordered bg-base-100"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
             >
@@ -313,15 +294,20 @@ const DashboardUsersPage = () => {
               اعمال فیلتر
             </button>
           </div>
-        </div>
+        </FilterBar>
 
-        <div className="overflow-x-auto rounded-2xl bg-white shadow-sm dark:bg-gray-900">
+        <SectionCard
+          title="لیست کاربران"
+          description="عملیات هر کاربر داخل منوی سه‌نقطه قرار گرفته تا جدول خواناتر بماند."
+          actions={<span className="badge badge-outline">{users.length} کاربر</span>}
+          bodyClassName="overflow-x-auto"
+        >
           {loading ? (
             <div className="flex justify-center py-16">
               <span className="loading loading-spinner loading-lg" />
             </div>
           ) : users.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-500">
+            <div className="py-16 text-center text-sm text-base-content/55">
               کاربری پیدا نشد.
             </div>
           ) : (
@@ -345,15 +331,23 @@ const DashboardUsersPage = () => {
                   const linkedToTelegram = hasTelegramLink(user);
                   const isProcessing = processingUserId === userId;
                   const isActive = normalizedStatus === 'active' && user.isActive;
+                  const displayName = getUserDisplayName(user);
 
                   return (
-                    <tr key={userId}>
+                    <tr key={userId} className="hover">
                       <td>
-                        <div className="font-bold text-gray-900 dark:text-gray-100">
-                          {getUserDisplayName(user)}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {user.username} · {user.email}
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-sm font-black text-primary">
+                            {getInitials(displayName)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-black text-base-content">
+                              {displayName}
+                            </div>
+                            <div className="truncate text-xs text-base-content/50">
+                              {user.username || 'بدون نام کاربری'} · {user.email || 'بدون ایمیل'}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
@@ -377,7 +371,7 @@ const DashboardUsersPage = () => {
                               متصل
                             </span>
 
-                            <div className="text-xs text-gray-500" dir="ltr">
+                            <div className="text-xs text-base-content/50" dir="ltr">
                               {user.telegramUsername
                                 ? `@${user.telegramUsername}`
                                 : user.telegramUserId || user.telegramChatId}
@@ -389,43 +383,53 @@ const DashboardUsersPage = () => {
                       </td>
 
                       <td>
-                        <div className="text-sm">
+                        <div className="text-sm font-bold text-base-content/80">
                           {user.profile?.jobTitle || 'بدون عنوان شغلی'}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-base-content/50">
                           {user.profile?.domain || 'بدون دامنه کاری'}
                         </div>
                       </td>
 
                       <td>
-                        <div className="flex justify-end gap-2">
+                        <div className="dropdown dropdown-end flex justify-end">
                           <button
                             type="button"
-                            className="btn btn-warning btn-xs"
-                            onClick={() => openEditModal(user)}
+                            className="btn btn-ghost btn-sm btn-square"
                             disabled={isProcessing}
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                            ویرایش
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`btn btn-xs ${isActive ? 'btn-error' : 'btn-success'
-                              }`}
-                            onClick={() => handleToggleUserStatus(user)}
-                            disabled={isProcessing}
+                            tabIndex={0}
                           >
                             {isProcessing ? (
                               <span className="loading loading-spinner loading-xs" />
-                            ) : isActive ? (
-                              <NoSymbolIcon className="h-4 w-4" />
                             ) : (
-                              <CheckCircleIcon className="h-4 w-4" />
+                              <EllipsisVerticalIcon className="h-5 w-5" />
                             )}
-
-                            {isActive ? 'غیرفعال' : 'فعال'}
                           </button>
+                          <ul
+                            tabIndex={0}
+                            className="menu dropdown-content z-[1] mt-2 w-44 rounded-2xl border border-base-300 bg-base-100 p-2 shadow-xl"
+                          >
+                            <li>
+                              <button type="button" onClick={() => openEditModal(user)}>
+                                <PencilSquareIcon className="h-4 w-4" />
+                                ویرایش
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                className={isActive ? 'text-error' : 'text-success'}
+                                onClick={() => handleToggleUserStatus(user)}
+                              >
+                                {isActive ? (
+                                  <NoSymbolIcon className="h-4 w-4" />
+                                ) : (
+                                  <CheckCircleIcon className="h-4 w-4" />
+                                )}
+                                {isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}
+                              </button>
+                            </li>
+                          </ul>
                         </div>
                       </td>
                     </tr>
@@ -434,7 +438,7 @@ const DashboardUsersPage = () => {
               </tbody>
             </table>
           )}
-        </div>
+        </SectionCard>
 
         <UserFormModal
           open={formOpen}

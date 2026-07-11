@@ -36,27 +36,27 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   return (
     <aside
       className={cn(
-        'fixed right-4 top-4 z-50 flex h-[calc(100vh-2rem)] flex-col rounded border border-gray-100 bg-white transition-all duration-300 dark:border-gray-700/50 dark:bg-gray-900',
+        'avid-glass-surface fixed right-4 top-4 z-50 flex h-[calc(100vh-2rem)] flex-col rounded-3xl transition-all duration-300',
         collapsedSidebar ? 'w-20' : 'w-72',
         sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
       )}
       dir="rtl"
     >
-      <div className="flex h-20 items-center justify-between border-b border-gray-200 px-5 dark:border-gray-700">
+      <div className="flex h-20 items-center justify-between border-b border-base-300/70 px-5">
         {!collapsedSidebar && (
           <Link
             href={ROUTES.DASHBOARD.HOME}
             className="group flex items-center gap-3"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0465a0] text-white shadow-md transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white shadow-md transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg">
               <span className="text-lg font-black">آ</span>
             </div>
 
             <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-xl font-bold text-base-content">
                 پنل آوید
               </h1>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-0.5 text-xs text-base-content/55">
                 مدیریت هوشمند کار
               </p>
             </div>
@@ -64,14 +64,14 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         )}
 
         {collapsedSidebar && (
-          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#1D3D6B] text-white shadow-md">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white shadow-md">
             <span className="text-lg font-black">آ</span>
           </div>
         )}
 
         <button
           onClick={() => setSidebarOpen(false)}
-          className="rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 lg:hidden"
+          className="btn btn-ghost btn-square btn-sm lg:hidden"
           type="button"
         >
           <XMarkIcon className="h-6 w-6" />
@@ -86,12 +86,12 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
       <button
         onClick={() => setCollapsedSidebar(!collapsedSidebar)}
-        className="absolute -left-6 top-26 hidden rounded-full bg-white p-2 shadow-lg transition-all duration-300 hover:scale-110 hover:bg-[#2A4F7E] hover:shadow-xl dark:bg-[#1D3D6B] lg:flex"
+        className="absolute -left-6 top-26 hidden rounded-full border border-base-300 bg-base-100 p-2 text-primary shadow-lg transition-all duration-300 hover:scale-110 hover:bg-primary hover:text-primary-content hover:shadow-xl lg:flex"
         type="button"
       >
         <ChevronLeftIcon
           className={cn(
-            'h-4 w-4 text-[#1D3D6B] transition-transform duration-300 hover:text-white',
+            'h-4 w-4 transition-transform duration-300',
             !collapsedSidebar && 'rotate-180',
           )}
         />

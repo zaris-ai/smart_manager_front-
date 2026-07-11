@@ -5,16 +5,23 @@ import {
   ArchiveBoxIcon,
   ArrowPathIcon,
   CheckCircleIcon,
+  EllipsisVerticalIcon,
   PencilSquareIcon,
   PlusIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import {
+  DashboardPageHeader,
+  FilterBar,
+  SectionCard,
+} from '@/components/common';
+import {
   ProjectRole,
   ProjectRolePayload,
   projectService,
 } from '@/services/project.service';
+import { confirmToast } from '@/utils/sonner-confirm';
 
 type RoleFormState = {
   title: string;
@@ -55,6 +62,7 @@ export default function ProjectRolesPage() {
   const [showInactive, setShowInactive] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
 
   const loadRoles = async () => {
     try {
@@ -111,6 +119,16 @@ export default function ProjectRolesPage() {
     setEditingRoleId(null);
   };
 
+  const openCreateForm = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    setFormOpen(false);
+    resetForm();
+  };
+
   const handleEdit = (role: ProjectRole) => {
     setEditingRoleId(getRoleId(role));
     setForm({
@@ -119,6 +137,7 @@ export default function ProjectRolesPage() {
       sortOrder: String(role.sortOrder ?? role.displayOrder ?? 0),
       isActive: role.isActive !== false,
     });
+    setFormOpen(true);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -141,7 +160,7 @@ export default function ProjectRolesPage() {
         toast.success('نقش پروژه با موفقیت ایجاد شد.');
       }
 
-      resetForm();
+      closeForm();
       await loadRoles();
     } catch (error: any) {
       toast.error(error?.message || 'خطا در ذخیره نقش پروژه');
@@ -157,6 +176,15 @@ export default function ProjectRolesPage() {
       toast.error('شناسه نقش معتبر نیست.');
       return;
     }
+
+    const confirmed = await confirmToast({
+      title: `غیرفعال‌سازی نقش «${getRoleTitle(role)}»`,
+      description: 'این نقش از انتخاب‌های جدید حذف می‌شود، اما سوابق قبلی پروژه‌ها باقی می‌ماند.',
+      confirmText: 'غیرفعال کن',
+      variant: 'warning',
+    });
+
+    if (!confirmed) return;
 
     try {
       await projectService.archiveProjectRole(roleId);
@@ -188,264 +216,243 @@ export default function ProjectRolesPage() {
 
   return (
     <div className="space-y-6 text-right" dir="rtl">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-              مدیریت نقش‌ها
-            </p>
-            <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
-              نقش‌های پروژه
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
-              نقش‌های قابل انتخاب برای اعضای پروژه را اینجا تعریف کنید. سپس در فرم پروژه و صفحه جزئیات پروژه، اعضا فقط از همین نقش‌های از پیش تعریف‌شده انتخاب می‌شوند.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={loadRoles}
-            disabled={isLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-          >
-            <ArrowPathIcon className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
-            بروزرسانی
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-        >
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-lg font-black text-slate-900 dark:text-white">
-              {editingRoleId ? 'ویرایش نقش' : 'نقش جدید'}
-            </h2>
-
-            {editingRoleId ? (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                <XMarkIcon className="h-4 w-4" />
-                انصراف
-              </button>
-            ) : null}
-          </div>
-
-          <div className="space-y-4">
-            <label className="block">
-              <span className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
-                عنوان نقش
-              </span>
-              <input
-                value={form.title}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="مثلا: مذاکره‌کننده"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
-                توضیحات
-              </span>
-              <textarea
-                value={form.description}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="توضیح کوتاه درباره مسئولیت این نقش"
-                rows={4}
-                className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
-                ترتیب نمایش
-              </span>
-              <input
-                type="number"
-                value={form.sortOrder}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    sortOrder: event.target.value,
-                  }))
-                }
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950"
-              />
-            </label>
-
-            <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                نقش فعال باشد
-              </span>
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    isActive: event.target.checked,
-                  }))
-                }
-                className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-            </label>
-
+      <DashboardPageHeader
+        eyebrow="تنظیمات پروژه"
+        title="نقش‌های پروژه"
+        description="نقش‌ها به‌صورت لیست مدیریتی نمایش داده می‌شوند و فرم ایجاد یا ویرایش فقط هنگام نیاز باز می‌شود."
+        actions={
+          <>
             <button
-              type="submit"
-              disabled={isSaving}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              onClick={loadRoles}
+              disabled={isLoading}
+              className="btn btn-outline"
             >
-              {editingRoleId ? (
-                <PencilSquareIcon className="h-5 w-5" />
-              ) : (
-                <PlusIcon className="h-5 w-5" />
-              )}
-              {isSaving
-                ? 'در حال ذخیره...'
-                : editingRoleId
-                  ? 'ذخیره ویرایش'
-                  : 'ایجاد نقش'}
+              <ArrowPathIcon className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
+              بروزرسانی
             </button>
+            <button type="button" onClick={openCreateForm} className="btn btn-primary">
+              <PlusIcon className="h-5 w-5" />
+              نقش جدید
+            </button>
+          </>
+        }
+      />
+
+      <FilterBar>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="جستجوی نقش..."
+            className="input input-bordered bg-base-100"
+          />
+
+          <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-base-300 bg-base-100 px-4 py-2 text-sm font-bold text-base-content/70">
+            <span>نمایش غیرفعال‌ها</span>
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(event) => setShowInactive(event.target.checked)}
+              className="checkbox checkbox-primary checkbox-sm"
+            />
+          </label>
+        </div>
+      </FilterBar>
+
+      <SectionCard
+        title="لیست نقش‌ها"
+        description="برای جلوگیری از شلوغی، عملیات هر نقش از منوی سه‌نقطه انجام می‌شود."
+        actions={<span className="badge badge-outline">{filteredRoles.length} نقش</span>}
+      >
+        {isLoading ? (
+          <div className="rounded-2xl border border-dashed border-base-300 p-8 text-center text-sm text-base-content/55">
+            در حال دریافت نقش‌ها...
           </div>
-        </form>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                لیست نقش‌ها
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {filteredRoles.length} نقش نمایش داده می‌شود.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="جستجوی نقش..."
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950"
-              />
-
-              <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={showInactive}
-                  onChange={(event) => setShowInactive(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                نمایش غیرفعال‌ها
-              </label>
-            </div>
+        ) : filteredRoles.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-base-300 p-8 text-center text-sm text-base-content/55">
+            نقشی برای نمایش وجود ندارد.
           </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredRoles.map((role) => {
+              const roleId = getRoleId(role);
+              const isInactive = role.isActive === false;
 
-          {isLoading ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              در حال دریافت نقش‌ها...
-            </div>
-          ) : filteredRoles.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              نقشی برای نمایش وجود ندارد.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredRoles.map((role) => {
-                const roleId = getRoleId(role);
-                const isInactive = role.isActive === false;
+              return (
+                <div
+                  key={roleId}
+                  className="grid gap-4 rounded-2xl border border-base-300 bg-base-200/40 p-4 transition hover:border-primary/40 hover:bg-primary/5 md:grid-cols-[1fr_140px_120px_56px] md:items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-base font-black text-base-content">
+                        {getRoleTitle(role)}
+                      </h3>
+                      <span className="rounded-full bg-base-300 px-3 py-1 text-xs font-black text-base-content/60">
+                        ترتیب: {Number(role.sortOrder ?? role.displayOrder ?? 0)}
+                      </span>
+                    </div>
 
-                return (
-                  <div
-                    key={roleId}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-blue-200 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-blue-900 dark:hover:bg-blue-950/20"
-                  >
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-black text-slate-900 dark:text-white">
-                            {getRoleTitle(role)}
-                          </h3>
+                    <p className="mt-1 line-clamp-1 text-sm leading-6 text-base-content/55">
+                      {role.description || 'بدون توضیح'}
+                    </p>
+                  </div>
 
-                          {isInactive ? (
-                            <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-                              غیرفعال
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                              فعال
-                            </span>
-                          )}
+                  <div>
+                    {isInactive ? (
+                      <span className="badge badge-error badge-outline">غیرفعال</span>
+                    ) : (
+                      <span className="badge badge-success badge-outline">فعال</span>
+                    )}
+                  </div>
 
-                          <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            ترتیب: {Number(role.sortOrder ?? role.displayOrder ?? 0)}
-                          </span>
-                        </div>
+                  <div className="text-xs text-base-content/50">
+                    {role.updatedAt ? 'ویرایش‌شده' : 'ثبت‌شده'}
+                  </div>
 
-                        {role.description ? (
-                          <p className="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
-                            {role.description}
-                          </p>
-                        ) : (
-                          <p className="mt-2 text-sm text-slate-400">
-                            بدون توضیح
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(role)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        >
+                  <div className="dropdown dropdown-end justify-self-end">
+                    <button type="button" className="btn btn-ghost btn-sm btn-square" tabIndex={0}>
+                      <EllipsisVerticalIcon className="h-5 w-5" />
+                    </button>
+                    <ul
+                      tabIndex={0}
+                      className="menu dropdown-content z-[1] mt-2 w-44 rounded-2xl border border-base-300 bg-base-100 p-2 shadow-xl"
+                    >
+                      <li>
+                        <button type="button" onClick={() => handleEdit(role)}>
                           <PencilSquareIcon className="h-4 w-4" />
                           ویرایش
                         </button>
-
+                      </li>
+                      <li>
                         {isInactive ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRestore(role)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
-                          >
+                          <button type="button" className="text-success" onClick={() => handleRestore(role)}>
                             <CheckCircleIcon className="h-4 w-4" />
                             فعال‌سازی
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleArchive(role)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
-                          >
+                          <button type="button" className="text-error" onClick={() => handleArchive(role)}>
                             <ArchiveBoxIcon className="h-4 w-4" />
                             غیرفعال
                           </button>
                         )}
-                      </div>
-                    </div>
+                      </li>
+                    </ul>
                   </div>
-                );
-              })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      {formOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={handleSubmit}
+            className="w-full max-w-xl rounded-3xl border border-base-300 bg-base-100 p-5 text-right shadow-2xl"
+          >
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-base-content">
+                  {editingRoleId ? 'ویرایش نقش' : 'نقش جدید'}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-base-content/55">
+                  اطلاعات نقش را کوتاه و قابل استفاده در فرم‌های پروژه وارد کنید.
+                </p>
+              </div>
+
+              <button type="button" className="btn btn-ghost btn-sm btn-square" onClick={closeForm}>
+                <XMarkIcon className="h-5 w-5" />
+              </button>
             </div>
-          )}
+
+            <div className="space-y-4">
+              <label className="form-control">
+                <span className="label label-text font-bold">عنوان نقش</span>
+                <input
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="مثلاً: مذاکره‌کننده"
+                  className="input input-bordered bg-base-100"
+                />
+              </label>
+
+              <label className="form-control">
+                <span className="label label-text font-bold">توضیحات</span>
+                <textarea
+                  value={form.description}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="توضیح کوتاه درباره مسئولیت این نقش"
+                  rows={4}
+                  className="textarea textarea-bordered bg-base-100"
+                />
+              </label>
+
+              <label className="form-control">
+                <span className="label label-text font-bold">ترتیب نمایش</span>
+                <input
+                  type="number"
+                  value={form.sortOrder}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      sortOrder: event.target.value,
+                    }))
+                  }
+                  className="input input-bordered bg-base-100"
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-base-300 bg-base-200/50 px-4 py-3">
+                <span className="text-sm font-bold text-base-content/75">
+                  نقش فعال باشد
+                </span>
+                <input
+                  type="checkbox"
+                  checked={form.isActive}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      isActive: event.target.checked,
+                    }))
+                  }
+                  className="checkbox checkbox-primary checkbox-sm"
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" className="btn btn-ghost" onClick={closeForm}>
+                  انصراف
+                </button>
+                <button type="submit" disabled={isSaving} className="btn btn-primary">
+                  {editingRoleId ? (
+                    <PencilSquareIcon className="h-5 w-5" />
+                  ) : (
+                    <PlusIcon className="h-5 w-5" />
+                  )}
+                  {isSaving
+                    ? 'در حال ذخیره...'
+                    : editingRoleId
+                      ? 'ذخیره ویرایش'
+                      : 'ایجاد نقش'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

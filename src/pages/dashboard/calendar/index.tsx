@@ -1,3 +1,8 @@
+import {
+    DashboardPageHeader,
+    FilterBar,
+    SectionCard,
+} from '@/components/common';
 import { DashboardLayout } from '@/components/layouts';
 import { ProjectCalendar } from '@/components/projects';
 import { projectService } from '@/services/project.service';
@@ -108,37 +113,34 @@ const DashboardCalendarPage = () => {
     return (
         <DashboardLayout>
             <div className="space-y-6" dir="rtl">
-                <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                            تقویم کارهای پروژه
-                        </h1>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            مدیران می‌توانند کارهای assigned شده به خودشان را در تقویم ببینند و همان‌جا کارهای انجام‌شده را ببندند.
-                        </p>
-                    </div>
+                <DashboardPageHeader
+                    eyebrow="تقویم پروژه‌ها"
+                    title="تقویم کارهای پروژه"
+                    description="تقویم عنصر اصلی این صفحه است؛ فیلترها به یک نوار فشرده منتقل شده‌اند تا نمای روزها خلوت‌تر بماند."
+                    actions={
+                        <>
+                            <button
+                                className={`btn ${onlyMine ? 'btn-primary' : 'btn-outline'}`}
+                                onClick={() => setOnlyMine((value) => !value)}
+                                disabled={!currentUserId}
+                                type="button"
+                            >
+                                <UserCircleIcon className="h-5 w-5" />
+                                کارهای من
+                            </button>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            className={`btn ${onlyMine ? 'btn-primary' : 'btn-outline'}`}
-                            onClick={() => setOnlyMine((value) => !value)}
-                            disabled={!currentUserId}
-                        >
-                            <UserCircleIcon className="h-5 w-5" />
-                            کارهای من
-                        </button>
+                            <button className="btn btn-outline" onClick={loadEvents} type="button">
+                                <ArrowPathIcon className="h-5 w-5" />
+                                بروزرسانی
+                            </button>
+                        </>
+                    }
+                />
 
-                        <button className="btn btn-outline" onClick={loadEvents}>
-                            <ArrowPathIcon className="h-5 w-5" />
-                            بروزرسانی
-                        </button>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-900">
-                    <div className="mb-4 flex flex-col gap-2 rounded-2xl bg-base-200 p-4 text-sm text-base-content/70 lg:flex-row lg:items-center lg:justify-between">
+                <FilterBar>
+                    <div className="mb-3 flex flex-col gap-2 rounded-2xl bg-base-200/60 px-4 py-3 text-sm text-base-content/60 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                            <span className="font-bold text-base-content">نمای فعلی: </span>
+                            <span className="font-black text-base-content">نمای فعلی: </span>
                             {onlyMine
                                 ? 'فقط کارهای مدیر واردشده'
                                 : 'همه کارها یا کارهای مدیر انتخاب‌شده'}
@@ -152,7 +154,7 @@ const DashboardCalendarPage = () => {
 
                     <div className="grid gap-3 lg:grid-cols-4">
                         <select
-                            className="select select-bordered"
+                            className="select select-bordered bg-base-100"
                             value={assignedUserId}
                             onChange={(event) => handleAssignedUserChange(event.target.value)}
                             disabled={onlyMine}
@@ -166,7 +168,7 @@ const DashboardCalendarPage = () => {
                         </select>
 
                         <select
-                            className="select select-bordered"
+                            className="select select-bordered bg-base-100"
                             value={status}
                             onChange={(event) => setStatus(event.target.value)}
                         >
@@ -190,7 +192,7 @@ const DashboardCalendarPage = () => {
                         </select>
 
                         <select
-                            className="select select-bordered"
+                            className="select select-bordered bg-base-100"
                             value={priority}
                             onChange={(event) => setPriority(event.target.value)}
                         >
@@ -202,11 +204,11 @@ const DashboardCalendarPage = () => {
                             ))}
                         </select>
 
-                        <button className="btn btn-neutral" onClick={loadEvents}>
+                        <button className="btn btn-neutral" onClick={loadEvents} type="button">
                             اعمال فیلتر
                         </button>
                     </div>
-                </div>
+                </FilterBar>
 
                 {error ? (
                     <div className="alert alert-error">
@@ -214,19 +216,25 @@ const DashboardCalendarPage = () => {
                     </div>
                 ) : null}
 
-                {loading ? (
-                    <div className="flex justify-center py-20">
-                        <span className="loading loading-spinner loading-lg" />
-                    </div>
-                ) : (
-                    <ProjectCalendar
-                        events={events}
-                        currentUserId={currentUserId}
-                        closingTaskId={closingTaskId}
-                        showCloseActions
-                        onCloseTask={handleCloseTaskFromCalendar}
-                    />
-                )}
+                <SectionCard
+                    title="نمای تقویم"
+                    description="رویدادهای پروژه، فاز و وظیفه در یک نمای متمرکز نمایش داده می‌شوند."
+                    actions={<span className="badge badge-outline">{events.length} رویداد</span>}
+                >
+                    {loading ? (
+                        <div className="flex justify-center py-20">
+                            <span className="loading loading-spinner loading-lg" />
+                        </div>
+                    ) : (
+                        <ProjectCalendar
+                            events={events}
+                            currentUserId={currentUserId}
+                            closingTaskId={closingTaskId}
+                            showCloseActions
+                            onCloseTask={handleCloseTaskFromCalendar}
+                        />
+                    )}
+                </SectionCard>
             </div>
         </DashboardLayout>
     );

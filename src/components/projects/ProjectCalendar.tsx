@@ -144,6 +144,10 @@ const getEventBadgeClass = (type: CalendarEvent['type']): string => {
       return 'badge-info';
     case 'project_due':
       return 'badge-warning';
+    case 'phase_start':
+      return 'badge-info';
+    case 'phase_end':
+      return 'badge-secondary';
     case 'task_start':
       return 'badge-success';
     case 'task_due':
@@ -159,6 +163,10 @@ const getEventTypeLabel = (type: CalendarEvent['type']): string => {
       return 'شروع پروژه';
     case 'project_due':
       return 'موعد پروژه';
+    case 'phase_start':
+      return 'شروع فاز';
+    case 'phase_end':
+      return 'پایان فاز';
     case 'task_start':
       return 'شروع کار';
     case 'task_due':

@@ -37,7 +37,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   return (
     <header
-      className="sticky top-4 z-30 mx-2 h-20 rounded-2xl border border-base-300 bg-base-100/90 shadow-sm backdrop-blur-md"
+      className="avid-glass-surface sticky top-4 z-30 mx-1 h-20 rounded-3xl sm:mx-2"
       dir="rtl"
     >
       <div className="flex h-full items-center justify-between gap-6 px-6">
@@ -66,7 +66,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
           <div className="hidden items-center gap-3 md:flex">
             <div className="avatar placeholder">
-              <div className="w-10 rounded-full bg-primary text-primary-content">
+              <div className="w-10 rounded-2xl bg-primary text-primary-content shadow-sm">
                 <span className="text-sm font-bold">{initials}</span>
               </div>
             </div>
@@ -84,7 +84,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
           <button
             onClick={onLogout}
-            className="btn btn-outline btn-sm"
+            className="btn btn-outline btn-sm rounded-xl"
             type="button"
           >
             خروج

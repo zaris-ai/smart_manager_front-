@@ -288,8 +288,8 @@ export const useThemeStore = create<ThemeState>()(
 
         const nextTheme: DaisyTheme =
           currentTheme === 'light'
-            ? 'dark'
-            : currentTheme === 'dark'
+            ? 'night'
+            : isDarkDaisyTheme(currentTheme)
               ? 'system'
               : 'light';
 

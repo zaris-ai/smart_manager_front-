@@ -1,26 +1,36 @@
 // src/pages/dashboard/projects/index.tsx
 
+import {
+  AdminStatCard,
+  DashboardPageHeader,
+  FilterBar,
+  SectionCard,
+  SoftBadge,
+} from '@/components/common';
 import { DashboardLayout } from '@/components/layouts';
-import { ProjectFormModal, ProjectImportModal } from '@/components/projects';
+import { ProjectImportModal } from '@/components/projects';
 import { projectService } from '@/services/project.service';
 import {
   getProjectId,
   getReferenceId,
   getUserDisplayName,
   Project,
+  ProjectPriority,
   projectPriorityLabels,
   ProjectStatus,
   projectStatusLabels,
 } from '@/types/project';
 import { withAuth } from '@/utils';
+import { confirmToast } from '@/utils/sonner-confirm';
 import {
   ArrowPathIcon,
   ArrowUpTrayIcon,
-  BanknotesIcon,
   CalendarDaysIcon,
-  ClockIcon,
+  ChartBarIcon,
+  EllipsisVerticalIcon,
   ExclamationTriangleIcon,
   EyeIcon,
+  FolderIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
@@ -29,6 +39,7 @@ import {
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 const PAGE_LIMIT = 20;
 
@@ -52,6 +63,13 @@ const getProjectMembers = (project: Project): ProjectMemberListItem[] => {
 
 const getMemberUser = (member: ProjectMemberListItem): any => {
   return member.userId as any;
+};
+
+const isProjectStaffingPending = (project: Project): boolean => {
+  const memberCount =
+    getProjectMembers(project).length || project.assignedUserIds?.length || 0;
+
+  return !getReferenceId(project.ownerId) || memberCount === 0;
 };
 
 const statusBadgeClass: Record<ProjectStatus, string> = {
@@ -92,17 +110,63 @@ const isProjectOverdue = (project: Project): boolean => {
   return dueDate < new Date();
 };
 
-const getInitials = (name: string): string => {
-  const cleanName = name.trim();
+const normalizeAmount = (value?: number | string | null): number => {
+  const amount = Number(value || 0);
 
-  if (!cleanName) return '؟';
+  if (!Number.isFinite(amount)) return 0;
 
-  return cleanName
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('');
+  return Math.round(amount);
+};
+
+const formatAmount = (value?: number | string | null): string => {
+  return `${normalizeAmount(value).toLocaleString('fa-IR')} ریال`;
+};
+
+const getProjectFinance = (project: Project) => {
+  const phaseSummary = project.phaseSummary;
+
+  if (phaseSummary) {
+    const revenue = normalizeAmount(
+      phaseSummary.totalRealizedRevenue ?? phaseSummary.totalPotentialRevenue ?? phaseSummary.totalExpectedRevenue,
+    );
+    const expense = normalizeAmount(
+      phaseSummary.totalRealizedExpense ?? phaseSummary.totalRealizedCost ?? phaseSummary.totalPotentialCost ?? phaseSummary.totalExpectedExpense,
+    );
+
+    return {
+      revenue,
+      expense,
+      balance: revenue - expense,
+    };
+  }
+
+  const totals = (project.phases || []).reduce(
+    (acc, phase) => {
+      const financial = phase.financial || {};
+
+      acc.revenue += normalizeAmount(
+        financial.realizedRevenueAmount ?? financial.realizedRevenue ?? financial.potentialRevenueAmount ?? financial.expectedRevenue,
+      );
+      acc.expense += normalizeAmount(
+        financial.realizedCostAmount ?? financial.realizedExpense ?? financial.potentialCostAmount ?? financial.expectedExpense,
+      );
+
+      return acc;
+    },
+    { revenue: 0, expense: 0 },
+  );
+
+  return {
+    ...totals,
+    balance: totals.revenue - totals.expense,
+  };
+};
+
+const getFinanceBalanceClass = (value: number): string => {
+  if (value > 0) return 'text-success';
+  if (value < 0) return 'text-error';
+
+  return 'text-base-content/65';
 };
 
 const DashboardProjectsPage = () => {
@@ -111,9 +175,6 @@ const DashboardProjectsPage = () => {
   const isManager = role === 'manager' || role === 'admin';
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-
-  const [formModalOpen, setFormModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -122,6 +183,7 @@ const DashboardProjectsPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [savingPriorityId, setSavingPriorityId] = useState('');
 
   const activeProjectsCount = useMemo(() => {
     return projects.filter((project) => project.status === 'active').length;
@@ -145,6 +207,10 @@ const DashboardProjectsPage = () => {
     });
 
     return userIds.size;
+  }, [projects]);
+
+  const staffingPendingCount = useMemo(() => {
+    return projects.filter(isProjectStaffingPending).length;
   }, [projects]);
 
   const loadProjects = async () => {
@@ -172,20 +238,13 @@ const DashboardProjectsPage = () => {
     loadProjects();
   }, []);
 
-  const openCreateModal = () => {
-    setSelectedProject(null);
-    setFormModalOpen(true);
-  };
-
-  const openEditModal = (project: Project) => {
-    setSelectedProject(project);
-    setFormModalOpen(true);
-  };
-
   const handleDelete = async (project: Project) => {
-    const confirmed = window.confirm(
-      `آیا از حذف پروژه «${project.title}» مطمئن هستید؟`,
-    );
+    const confirmed = await confirmToast({
+      title: `حذف پروژه «${project.title}»`,
+      description: 'این عملیات پروژه را از لیست حذف می‌کند. قبل از تایید مطمئن شوید به اطلاعات وابسته نیاز ندارید.',
+      confirmText: 'حذف پروژه',
+      variant: 'danger',
+    });
 
     if (!confirmed) return;
 
@@ -197,90 +256,129 @@ const DashboardProjectsPage = () => {
     }
   };
 
+  const handlePriorityChange = async (project: Project, nextPriority: ProjectPriority) => {
+    const projectId = getProjectId(project);
+
+    if (!projectId || project.priority === nextPriority) return;
+
+    try {
+      setSavingPriorityId(projectId);
+      const updatedProject = await projectService.updateProject(projectId, {
+        priority: nextPriority,
+      });
+
+      setProjects((previous) =>
+        previous.map((item) =>
+          getProjectId(item) === projectId
+            ? {
+                ...item,
+                priority: updatedProject.priority || nextPriority,
+                priorityLabel:
+                  updatedProject.priorityLabel || projectPriorityLabels[nextPriority] || nextPriority,
+              }
+            : item,
+        ),
+      );
+      toast.success('اولویت پروژه بروزرسانی شد.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'خطا در ویرایش اولویت پروژه';
+
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSavingPriorityId('');
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6" dir="rtl">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              مدیریت پروژه‌ها
-            </h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              پروژه‌ها، نقش اعضا، زمان‌بندی، وظایف، فایل‌ها و یادداشت‌های پیشرفت را مدیریت کنید.
-            </p>
-          </div>
+        <DashboardPageHeader
+          eyebrow="فهرست پروژه‌ها"
+          title="مدیریت پروژه‌ها"
+          description="این صفحه فقط برای مرور و اقدام سریع روی پروژه‌هاست. جزئیات، اعضا، فازها و نمودارها در صفحه اختصاصی هر پروژه قرار گرفته‌اند."
+          actions={
+            <>
+              <Link href="/dashboard/project-charts" className="btn btn-outline">
+                <ChartBarIcon className="h-5 w-5" />
+                نمودارها
+              </Link>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/dashboard/project-overview" className="btn btn-outline">
-              <UserGroupIcon className="h-5 w-5" />
-              نمای کلان
-            </Link>
+              <Link href="/dashboard/calendar" className="btn btn-outline">
+                <CalendarDaysIcon className="h-5 w-5" />
+                تقویم
+              </Link>
 
-            <Link href="/dashboard/calendar" className="btn btn-outline">
-              <CalendarDaysIcon className="h-5 w-5" />
-              تقویم پروژه‌ها
-            </Link>
+              {isManager ? (
+                <>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setImportModalOpen(true)}
+                    type="button"
+                  >
+                    <ArrowUpTrayIcon className="h-5 w-5" />
+                    ورود از اکسل
+                  </button>
 
-            {isManager ? (
-              <>
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setImportModalOpen(true)}
-                >
-                  <ArrowUpTrayIcon className="h-5 w-5" />
-                  ورود از اکسل
-                </button>
+                  <Link className="btn btn-primary" href="/dashboard/projects/define">
+                    <PlusIcon className="h-5 w-5" />
+                    پروژه جدید
+                  </Link>
+                </>
+              ) : null}
+            </>
+          }
+        />
 
-                <button className="btn btn-primary" onClick={openCreateModal}>
-                  <PlusIcon className="h-5 w-5" />
-                  پروژه جدید
-                </button>
-              </>
-            ) : null}
-          </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <AdminStatCard
+            title="کل پروژه‌ها"
+            value={projects.length}
+            description="پروژه‌های قابل مشاهده برای نقش فعلی"
+            icon={FolderIcon}
+            tone="neutral"
+          />
+          <AdminStatCard
+            title="پروژه‌های فعال"
+            value={activeProjectsCount}
+            description="پروژه‌هایی که نیازمند پیگیری روزانه‌اند"
+            icon={ChartBarIcon}
+            tone="success"
+          />
+          <AdminStatCard
+            title="عقب‌افتاده"
+            value={dueProjectsCount}
+            description="موعد تحویل گذشته و تکمیل نشده"
+            icon={ExclamationTriangleIcon}
+            tone={dueProjectsCount ? 'error' : 'success'}
+          />
+          <AdminStatCard
+            title="کارشناسان درگیر"
+            value={teamMembersCount}
+            description="تعداد افراد یکتای عضو پروژه‌ها"
+            icon={UserGroupIcon}
+            tone="primary"
+          />
+          <AdminStatCard
+            title="نیازمند تخصیص"
+            value={staffingPendingCount}
+            description="پروژه‌های بدون مسئول یا عضو مشخص"
+            icon={UserGroupIcon}
+            tone={staffingPendingCount ? 'warning' : 'success'}
+          />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-gray-900">
-            <div className="text-sm text-gray-500">کل پروژه‌ها</div>
-            <div className="mt-2 text-3xl font-bold text-gray-900 dark:text-gray-100">
-              {projects.length}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm dark:border-emerald-950 dark:bg-gray-900">
-            <div className="text-sm text-gray-500">پروژه‌های فعال</div>
-            <div className="mt-2 text-3xl font-bold text-emerald-600">
-              {activeProjectsCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-rose-100 bg-white p-5 shadow-sm dark:border-rose-950 dark:bg-gray-900">
-            <div className="text-sm text-gray-500">پروژه‌های عقب‌افتاده</div>
-            <div className="mt-2 text-3xl font-bold text-rose-600">
-              {dueProjectsCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm dark:border-blue-950 dark:bg-gray-900">
-            <div className="text-sm text-gray-500">کارشناسان درگیر</div>
-            <div className="mt-2 text-3xl font-bold text-blue-600">
-              {teamMembersCount}
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-gray-900">
+        <FilterBar>
           <div className="grid gap-3 lg:grid-cols-5">
             <input
-              className="input input-bordered bg-white lg:col-span-2 dark:bg-gray-950"
+              className="input input-bordered bg-base-100 lg:col-span-2"
               placeholder="جستجو در عنوان یا توضیحات پروژه"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
 
             <select
-              className="select select-bordered bg-white dark:bg-gray-950"
+              className="select select-bordered bg-base-100"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
             >
@@ -293,7 +391,7 @@ const DashboardProjectsPage = () => {
             </select>
 
             <select
-              className="select select-bordered bg-white dark:bg-gray-950"
+              className="select select-bordered bg-base-100"
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
             >
@@ -305,12 +403,12 @@ const DashboardProjectsPage = () => {
               ))}
             </select>
 
-            <button className="btn btn-neutral" onClick={loadProjects}>
+            <button className="btn btn-neutral" onClick={loadProjects} type="button">
               <ArrowPathIcon className="h-5 w-5" />
               اعمال فیلتر
             </button>
           </div>
-        </div>
+        </FilterBar>
 
         {error ? (
           <div className="alert alert-error">
@@ -318,17 +416,25 @@ const DashboardProjectsPage = () => {
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-gray-900">
+        <SectionCard
+          title="لیست پروژه‌ها"
+          description="هر پروژه در یک ردیف کامل نمایش داده می‌شود؛ اولویت قابل ویرایش است و درآمد/هزینه فازها با رنگ‌بندی مدیریتی نمایش داده می‌شود."
+          actions={
+            <span className="badge badge-outline">
+              {projects.length} پروژه
+            </span>
+          }
+        >
           {loading ? (
             <div className="flex justify-center py-16">
               <span className="loading loading-spinner loading-lg" />
             </div>
           ) : projects.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
-              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              <div className="text-lg font-black text-base-content">
                 هنوز پروژه‌ای برای نمایش وجود ندارد
               </div>
-              <p className="mt-2 max-w-md text-sm text-gray-500">
+              <p className="mt-2 max-w-md text-sm leading-7 text-base-content/55">
                 {isManager
                   ? 'برای شروع، یک پروژه ایجاد کنید یا فایل اکسل پروژه‌ها را وارد کنید.'
                   : 'فقط پروژه‌هایی که به شما تخصیص داده شده‌اند در این صفحه نمایش داده می‌شوند.'}
@@ -338,238 +444,197 @@ const DashboardProjectsPage = () => {
                   <button
                     className="btn btn-outline"
                     onClick={() => setImportModalOpen(true)}
+                    type="button"
                   >
                     <ArrowUpTrayIcon className="h-5 w-5" />
                     ورود از اکسل
                   </button>
 
-                  <button className="btn btn-primary" onClick={openCreateModal}>
+                  <Link className="btn btn-primary" href="/dashboard/projects/define">
                     <PlusIcon className="h-5 w-5" />
                     ایجاد اولین پروژه
-                  </button>
+                  </Link>
                 </div>
               ) : null}
             </div>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-3">
               {projects.map((project) => {
                 const projectId = getProjectId(project);
                 const projectMembers = getProjectMembers(project);
                 const overdue = isProjectOverdue(project);
+                const staffingPending = isProjectStaffingPending(project);
+                const ownerName = project.ownerId
+                  ? getUserDisplayName(project.ownerId)
+                  : 'تخصیص انجام نشده';
+                const finance = getProjectFinance(project);
 
                 return (
                   <div
                     key={projectId}
-                    className="rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:border-blue-200 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-blue-900 dark:hover:bg-blue-950/20"
+                    className="grid gap-4 rounded-2xl border border-base-300 bg-base-200/40 p-4 transition hover:border-primary/40 hover:bg-primary/5 xl:grid-cols-[minmax(260px,1.3fr)_150px_160px_240px_150px_170px_56px] xl:items-center"
                   >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/dashboard/projects/${projectId}`}
-                            className="text-lg font-black text-gray-900 transition hover:text-primary dark:text-gray-100"
-                          >
-                            {project.title}
-                          </Link>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/dashboard/projects/${projectId}`}
+                          className="truncate text-base font-black text-base-content transition hover:text-primary"
+                        >
+                          {project.title}
+                        </Link>
 
-                          {overdue ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700 dark:bg-rose-950 dark:text-rose-200">
-                              <ExclamationTriangleIcon className="h-4 w-4" />
-                              عقب‌افتاده
-                            </span>
-                          ) : null}
-                        </div>
+                        {overdue ? (
+                          <SoftBadge className="bg-error/10 text-error">
+                            <ExclamationTriangleIcon className="h-4 w-4" />
+                            عقب‌افتاده
+                          </SoftBadge>
+                        ) : null}
 
-                        <p className="mt-2 line-clamp-2 max-w-2xl text-sm leading-7 text-gray-500 dark:text-gray-400">
-                          {project.description || 'بدون توضیح'}
-                        </p>
+                        {staffingPending ? (
+                          <SoftBadge className="bg-warning/15 text-warning">
+                            <UserGroupIcon className="h-4 w-4" />
+                            تخصیص ناقص
+                          </SoftBadge>
+                        ) : null}
                       </div>
 
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-black ${
-                            statusBadgeClass[project.status] ||
-                            'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
-                          }`}
-                        >
-                          {project.statusLabel ||
-                            projectStatusLabels[project.status]}
-                        </span>
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-black ${
-                            priorityBadgeClass[project.priority] ||
-                            'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
-                          }`}
-                        >
-                          {project.priorityLabel ||
-                            projectPriorityLabels[project.priority]}
-                        </span>
-                      </div>
+                      <p className="mt-1 line-clamp-1 text-xs leading-6 text-base-content/55">
+                        {project.description || 'بدون توضیح'}
+                      </p>
                     </div>
 
-                    <div className="mt-5 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-gray-900">
-                        <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
-                          <ClockIcon className="h-5 w-5 text-blue-500" />
-                          زمان‌بندی پروژه
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                          <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
-                            <div className="text-slate-400">شروع</div>
-                            <div className="mt-1 font-bold text-slate-800 dark:text-slate-100">
-                              {formatDate(project.startDate)}
-                            </div>
-                          </div>
-
-                          <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
-                            <div className="text-slate-400">تحویل</div>
-                            <div
-                              className={`mt-1 font-bold ${
-                                overdue
-                                  ? 'text-rose-600 dark:text-rose-300'
-                                  : 'text-slate-800 dark:text-slate-100'
-                              }`}
-                            >
-                              {formatDate(project.dueDate)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-gray-900">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
-                            <UserGroupIcon className="h-5 w-5 text-blue-500" />
-                            تیم و نقش‌ها
-                          </div>
-
-                          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 dark:bg-blue-950 dark:text-blue-200">
-                            {projectMembers.length ||
-                              project.assignedUserIds?.length ||
-                              0}{' '}
-                            نفر
-                          </span>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                          {projectMembers.length ? (
-                            <>
-                              {projectMembers.slice(0, 4).map((member, index) => {
-                                const user = getMemberUser(member);
-                                const userId =
-                                  getReferenceId(user) || `${projectId}-${index}`;
-                                const displayName = getUserDisplayName(user);
-                                const roleTitle =
-                                  member.roleInProject || 'عضو پروژه';
-
-                                return (
-                                  <div
-                                    key={userId}
-                                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950"
-                                  >
-                                    <div className="flex min-w-0 items-center gap-3">
-                                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-xs font-black text-white">
-                                        {getInitials(displayName)}
-                                      </div>
-
-                                      <div className="min-w-0">
-                                        <div className="truncate text-sm font-black text-slate-900 dark:text-white">
-                                          {displayName}
-                                        </div>
-                                        <div className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
-                                          {roleTitle}
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="shrink-0 text-left text-[11px] leading-5 text-slate-400">
-                                      <div>شروع: {formatDate(member.startedAt)}</div>
-                                      <div>
-                                        پایان: {formatDate(member.expectedFinishedAt)}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-
-                              {projectMembers.length > 4 ? (
-                                <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-2 text-center text-xs font-bold text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                                  +{projectMembers.length - 4} عضو دیگر در جزئیات پروژه
-                                </div>
-                              ) : null}
-                            </>
-                          ) : project.assignedUserIds?.length ? (
-                            <div className="flex flex-wrap gap-2">
-                              {project.assignedUserIds.slice(0, 5).map((user) => (
-                                <span
-                                  key={getReferenceId(user)}
-                                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                >
-                                  {getUserDisplayName(user)}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-xs text-gray-500 dark:border-slate-700">
-                              هنوز عضوی برای این پروژه تعریف نشده است.
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                    <div className="flex flex-wrap gap-2 xl:block">
+                      <SoftBadge
+                        className={
+                          statusBadgeClass[project.status] ||
+                          'bg-base-300 text-base-content/70'
+                        }
+                      >
+                        {project.statusLabel || projectStatusLabels[project.status]}
+                      </SoftBadge>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
-                      <Link
-                        href={`/dashboard/projects/${projectId}`}
-                        className="btn btn-primary btn-sm"
-                      >
-                        <EyeIcon className="h-4 w-4" />
-                        مشاهده
-                      </Link>
-
-                      <Link
-                        href={`/dashboard/projects/${projectId}/finance`}
-                        className="btn btn-outline btn-sm"
-                      >
-                        <BanknotesIcon className="h-4 w-4" />
-                        مالی
-                      </Link>
-
+                    <div className="min-w-0">
                       {isManager ? (
-                        <>
-                          <button
-                            className="btn btn-warning btn-sm"
-                            onClick={() => openEditModal(project)}
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                            ویرایش
-                          </button>
+                        <select
+                          className="select select-bordered select-sm w-full bg-base-100 font-black"
+                          value={project.priority}
+                          disabled={savingPriorityId === projectId}
+                          onChange={(event) => handlePriorityChange(project, event.target.value as ProjectPriority)}
+                          aria-label="ویرایش اولویت پروژه"
+                        >
+                          {Object.entries(projectPriorityLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <SoftBadge
+                          className={
+                            priorityBadgeClass[project.priority] ||
+                            'bg-base-300 text-base-content/70'
+                          }
+                        >
+                          {project.priorityLabel || projectPriorityLabels[project.priority]}
+                        </SoftBadge>
+                      )}
+                    </div>
 
-                          <button
-                            className="btn btn-error btn-sm"
-                            onClick={() => handleDelete(project)}
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                            حذف
-                          </button>
-                        </>
+                    <div className="space-y-1 text-xs font-bold">
+                      <div className="flex items-center justify-between gap-4 rounded-lg bg-success/10 px-3 py-1 text-success">
+                        <span>درآمد</span>
+                        <span>{formatAmount(finance.revenue)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 rounded-lg bg-error/10 px-3 py-1 text-error">
+                        <span>هزینه</span>
+                        <span>{formatAmount(finance.expense)}</span>
+                      </div>
+                      <div className={`flex items-center justify-between gap-4 rounded-lg bg-base-200 px-3 py-1 ${getFinanceBalanceClass(finance.balance)}`}>
+                        <span>مانده</span>
+                        <span>{formatAmount(finance.balance)}</span>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 text-sm">
+                      <div
+                        className={`truncate font-bold ${
+                          staffingPending ? 'text-warning' : 'text-base-content'
+                        }`}
+                      >
+                        {ownerName}
+                      </div>
+                      <div className="text-xs text-base-content/50">
+                        {projectMembers.length || project.assignedUserIds?.length || 0} عضو
+                      </div>
+                      {staffingPending && isManager ? (
+                        <Link
+                          href={`/dashboard/projects/${projectId}/edit`}
+                          className="mt-1 inline-flex text-xs font-bold text-primary hover:underline"
+                        >
+                          تکمیل افراد و مسئولیت‌ها
+                        </Link>
                       ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs xl:block xl:space-y-1">
+                      <div>
+                        <span className="text-base-content/45">شروع: </span>
+                        <span className="font-bold text-base-content/80">
+                          {formatDate(project.startDate)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-base-content/45">تحویل: </span>
+                        <span className={overdue ? 'font-bold text-error' : 'font-bold text-base-content/80'}>
+                          {formatDate(project.dueDate)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="dropdown dropdown-end justify-self-end">
+                      <button type="button" className="btn btn-ghost btn-sm btn-square" tabIndex={0}>
+                        <EllipsisVerticalIcon className="h-5 w-5" />
+                      </button>
+                      <ul
+                        tabIndex={0}
+                        className="menu dropdown-content z-[1] mt-2 w-44 rounded-2xl border border-base-300 bg-base-100 p-2 shadow-xl"
+                      >
+                        <li>
+                          <Link href={`/dashboard/projects/${projectId}`}>
+                            <EyeIcon className="h-4 w-4" />
+                            مشاهده
+                          </Link>
+                        </li>
+
+                        {isManager ? (
+                          <>
+                            <li>
+                              <Link href={`/dashboard/projects/${projectId}/edit`}>
+                                <PencilSquareIcon className="h-4 w-4" />
+                                {staffingPending ? 'تکمیل تخصیص‌ها' : 'ویرایش'}
+                              </Link>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                className="text-error"
+                                onClick={() => handleDelete(project)}
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                                حذف
+                              </button>
+                            </li>
+                          </>
+                        ) : null}
+                      </ul>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
-
-        <ProjectFormModal
-          open={formModalOpen}
-          project={selectedProject}
-          onClose={() => setFormModalOpen(false)}
-          onSaved={loadProjects}
-        />
+        </SectionCard>
 
         <ProjectImportModal
           open={importModalOpen}

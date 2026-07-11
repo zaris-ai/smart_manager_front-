@@ -1,5 +1,6 @@
 import { cn } from '@/utils/cn';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { MenuItem } from './menuItems';
 
 interface SidebarMenuProps {
@@ -13,8 +14,10 @@ const allowedMenuHrefs = [
   '/dashboard/projects',
   '/dashboard/calendar',
   '/dashboard/users',
+  '/dashboard/telegram',
   '/dashboard/roles',
-  '/dashboard/project-overview'
+  '/dashboard/project-overview',
+  '/dashboard/project-charts'
 ];
 
 export const SidebarMenu: React.FC<SidebarMenuProps> = ({
@@ -22,8 +25,14 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
   isActive,
   collapsedSidebar,
 }) => {
+  const { data: session } = useSession();
+  const role = String(session?.user?.role || '').toLowerCase();
+
   const visibleItems = menuItems.filter(
-    (item) => item.href && allowedMenuHrefs.includes(item.href),
+    (item) =>
+      item.href &&
+      allowedMenuHrefs.includes(item.href) &&
+      (!item.allowedRoles?.length || item.allowedRoles.includes(role)),
   );
 
   const renderMenuItem = (item: MenuItem) => {
@@ -34,26 +43,26 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
         key={item.href}
         href={item.href || '#'}
         className={cn(
-          'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200',
+          'group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-all duration-200',
           active
-            ? 'bg-[#1D3D6B]/10 text-[#1D3D6B] dark:bg-[#0465a0]/20 dark:text-[#4A7BA7]'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-gray-200',
+            ? 'bg-primary/10 text-primary shadow-sm'
+            : 'text-base-content/60 hover:bg-base-200/80 hover:text-base-content',
         )}
       >
         {active && (
-          <div className="absolute right-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-l-full bg-[#0465a0] dark:bg-[#4A7BA7]" />
+          <div className="absolute right-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-l-full bg-primary" />
         )}
 
         <div
           className={cn(
-            'flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-200',
+            'flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200',
             collapsedSidebar
               ? active
-                ? 'bg-transparent text-[#0465a0] dark:text-[#4A7BA7]'
-                : 'bg-transparent text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300'
+                ? 'bg-transparent text-primary'
+                : 'bg-transparent text-base-content/55 group-hover:text-base-content'
               : active
-                ? 'bg-[#0465a0] text-white dark:bg-[#0465a0]'
-                : 'bg-transparent text-gray-500 group-hover:bg-gray-100 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:bg-gray-800 dark:group-hover:text-gray-300',
+                ? 'bg-primary text-primary-content'
+                : 'bg-transparent text-base-content/55 group-hover:bg-base-200 group-hover:text-base-content',
           )}
         >
           <item.icon className="h-5 w-5" />
@@ -64,8 +73,8 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
             className={cn(
               'flex-1 text-sm transition-all duration-200',
               active
-                ? 'font-semibold text-[#0465a0] dark:text-[#4A7BA7]'
-                : 'font-medium text-gray-600 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-gray-200',
+                ? 'font-black text-primary'
+                : 'font-bold text-base-content/60 group-hover:text-base-content',
             )}
           >
             {item.label}
@@ -76,7 +85,7 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           <span
             className={cn(
               'rounded-full px-2 py-0.5 text-xs font-semibold',
-              active ? 'bg-[#0465a0] text-white' : 'bg-red-500 text-white',
+              active ? 'bg-primary text-primary-content' : 'bg-red-500 text-white',
             )}
           >
             {item.badge}
@@ -90,7 +99,7 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
     <nav className="flex-1 overflow-y-auto px-3 py-4" dir="rtl">
       {!collapsedSidebar && (
         <div className="mb-3 px-3">
-          <p className="text-xs font-semibold text-gray-400 dark:text-gray-500">
+          <p className="text-xs font-black text-base-content/45">
             منوی اصلی
           </p>
         </div>

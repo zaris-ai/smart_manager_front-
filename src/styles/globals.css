@@ -355,3 +355,201 @@ select option:checked {
   outline: 2px solid var(--app-primary);
   outline-offset: 2px;
 }
+/* ============================================
+   Avid dashboard dark-mode refinement layer
+   Keeps legacy Tailwind gray/white surfaces aligned with DaisyUI themes.
+   ============================================ */
+html.dark,
+html[data-theme='dark'],
+html[data-theme='business'],
+html[data-theme='night'],
+html[data-theme='dim'],
+html[data-theme='coffee'],
+html[data-theme='dracula'],
+html[data-theme='luxury'],
+html[data-theme='black'],
+html[data-theme='forest'],
+html[data-theme='sunset'] {
+  --app-dashboard-bg:
+    radial-gradient(circle at top right, color-mix(in oklab, var(--app-primary) 22%, transparent), transparent 28rem),
+    linear-gradient(135deg, color-mix(in oklab, var(--app-base-200) 92%, #020617), #020617);
+  --app-surface-raised: color-mix(in oklab, var(--app-base-100) 92%, #020617);
+  --app-surface-muted: color-mix(in oklab, var(--app-base-200) 86%, #020617);
+  --app-border-soft: color-mix(in oklab, var(--app-base-content) 14%, transparent);
+}
+
+html.dark body,
+html[data-theme='dark'] body,
+html[data-theme='business'] body,
+html[data-theme='night'] body,
+html[data-theme='dim'] body,
+html[data-theme='coffee'] body,
+html[data-theme='dracula'] body,
+html[data-theme='luxury'] body,
+html[data-theme='black'] body,
+html[data-theme='forest'] body,
+html[data-theme='sunset'] body {
+  background: var(--app-dashboard-bg);
+}
+
+html.dark .bg-white,
+html.dark .bg-gray-50,
+html.dark .bg-gray-100,
+html.dark .bg-slate-50,
+html.dark .bg-slate-100,
+html[data-theme='dark'] .bg-white,
+html[data-theme='dark'] .bg-gray-50,
+html[data-theme='dark'] .bg-gray-100,
+html[data-theme='dark'] .bg-slate-50,
+html[data-theme='dark'] .bg-slate-100 {
+  background-color: var(--app-surface-raised) !important;
+}
+
+html.dark .dark\:bg-gray-900,
+html.dark .dark\:bg-gray-950,
+html.dark .dark\:bg-slate-900,
+html.dark .dark\:bg-slate-950,
+html[data-theme='dark'] .dark\:bg-gray-900,
+html[data-theme='dark'] .dark\:bg-gray-950,
+html[data-theme='dark'] .dark\:bg-slate-900,
+html[data-theme='dark'] .dark\:bg-slate-950 {
+  background-color: var(--app-surface-raised) !important;
+}
+
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html[data-theme='dark'] .text-gray-900,
+html[data-theme='dark'] .text-gray-800,
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='dark'] .text-slate-800 {
+  color: var(--app-base-content) !important;
+}
+
+html.dark .text-gray-700,
+html.dark .text-gray-600,
+html.dark .text-gray-500,
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-slate-500,
+html[data-theme='dark'] .text-gray-700,
+html[data-theme='dark'] .text-gray-600,
+html[data-theme='dark'] .text-gray-500,
+html[data-theme='dark'] .text-slate-700,
+html[data-theme='dark'] .text-slate-600,
+html[data-theme='dark'] .text-slate-500 {
+  color: color-mix(in oklab, var(--app-base-content) 64%, transparent) !important;
+}
+
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300,
+html[data-theme='dark'] .border-gray-100,
+html[data-theme='dark'] .border-gray-200,
+html[data-theme='dark'] .border-gray-300,
+html[data-theme='dark'] .border-slate-100,
+html[data-theme='dark'] .border-slate-200,
+html[data-theme='dark'] .border-slate-300 {
+  border-color: var(--app-border-soft) !important;
+}
+
+html.dark .shadow-sm,
+html.dark .shadow,
+html.dark .shadow-md,
+html[data-theme='dark'] .shadow-sm,
+html[data-theme='dark'] .shadow,
+html[data-theme='dark'] .shadow-md {
+  box-shadow: 0 18px 44px rgb(0 0 0 / 0.22) !important;
+}
+
+html.dark .table :where(th),
+html.dark .table :where(td),
+html[data-theme='dark'] .table :where(th),
+html[data-theme='dark'] .table :where(td) {
+  border-color: var(--app-border-soft);
+}
+
+.avid-dashboard-shell {
+  background:
+    radial-gradient(circle at 85% 0%, color-mix(in oklab, var(--app-primary) 11%, transparent), transparent 30rem),
+    var(--app-base-200);
+}
+
+html.dark .avid-dashboard-shell {
+  background: var(--app-dashboard-bg);
+}
+
+.avid-glass-surface {
+  border: 1px solid color-mix(in oklab, var(--app-base-content) 10%, transparent);
+  background: color-mix(in oklab, var(--app-base-100) 88%, transparent);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 0.08);
+  backdrop-filter: blur(16px);
+}
+
+html.dark .avid-glass-surface {
+  background: color-mix(in oklab, var(--app-base-100) 82%, #020617);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.28);
+}
+
+.avid-tab-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.45rem;
+  scroll-padding-inline: 0.75rem;
+}
+
+.avid-tab-button {
+  min-width: max-content;
+  border: 1px solid transparent;
+  border-radius: 1.25rem;
+  padding: 0.85rem 1rem;
+  color: color-mix(in oklab, var(--app-base-content) 62%, transparent);
+  background: transparent;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.avid-tab-button:hover {
+  color: var(--app-base-content);
+  background: color-mix(in oklab, var(--app-base-content) 7%, transparent);
+}
+
+.avid-tab-button-active {
+  color: var(--color-primary-content, #fff);
+  border-color: color-mix(in oklab, var(--app-primary) 55%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--app-primary) 100%, #2563eb), color-mix(in oklab, var(--app-primary) 72%, #0f172a));
+  box-shadow: 0 16px 34px color-mix(in oklab, var(--app-primary) 28%, transparent);
+  transform: translateY(-1px);
+}
+
+html.dark .avid-tab-button-active {
+  box-shadow: 0 18px 44px color-mix(in oklab, var(--app-primary) 36%, #000);
+}
+
+.avid-tab-icon {
+  display: grid;
+  height: 2rem;
+  width: 2rem;
+  place-items: center;
+  border-radius: 0.85rem;
+  background: color-mix(in oklab, currentColor 11%, transparent);
+}
+
+.avid-health-meter {
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--app-base-content) 10%, transparent);
+}
+
+.avid-health-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-success, #16a34a), var(--color-primary, #2563eb));
+}

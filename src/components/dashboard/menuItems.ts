@@ -7,6 +7,8 @@ import {
   HomeIcon,
   IdentificationIcon,
   PresentationChartBarIcon,
+  PaperAirplaneIcon,
+  RectangleGroupIcon,
   UsersIcon,
 } from '@heroicons/react/24/outline';
 
@@ -16,6 +18,7 @@ export interface MenuItem {
   icon: ElementType;
   badge?: number;
   section?: 'main' | 'users' | 'projects';
+  allowedRoles?: string[];
 }
 
 export const menuItems: MenuItem[] = [
@@ -29,6 +32,12 @@ export const menuItems: MenuItem[] = [
     label: 'نمای کلان پروژه‌ها',
     href: '/dashboard/project-overview',
     icon: PresentationChartBarIcon,
+    section: 'projects',
+  },
+  {
+    label: 'نمودارهای مدیریتی',
+    href: '/dashboard/project-charts',
+    icon: RectangleGroupIcon,
     section: 'projects',
   },
   {
@@ -48,6 +57,13 @@ export const menuItems: MenuItem[] = [
     href: '/dashboard/calendar',
     icon: CalendarDaysIcon,
     section: 'projects',
+  },
+  {
+    label: 'ربات تلگرام',
+    href: '/dashboard/telegram',
+    icon: PaperAirplaneIcon,
+    section: 'users',
+    allowedRoles: ['manager', 'admin', 'super_admin', 'project_owner'],
   },
   {
     label: 'کاربران',

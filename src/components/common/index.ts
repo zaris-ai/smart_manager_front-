@@ -18,3 +18,4 @@ export {
   LoadingOverlay,
 } from './LoadingSkeleton';
 
+export * from './DashboardUi';

@@ -1,4 +1,4 @@
-export type UserRole = 'manager' | 'employee';
+export type UserRole = 'board' | 'manager' | 'expert' | 'admin' | 'employee';
 
 export type ProjectStatus =
   | 'negotiating'
@@ -64,6 +64,80 @@ export type UserSummary = {
 
 export type UserReference = string | UserSummary;
 
+export type ProjectPhaseFinancial = {
+  expectedRevenue?: number | null;
+  expectedExpense?: number | null;
+  realizedRevenue?: number | null;
+  realizedExpense?: number | null;
+  potentialRevenueAmount?: number | null;
+  potentialCostAmount?: number | null;
+  realizedRevenueAmount?: number | null;
+  realizedCostAmount?: number | null;
+  currency?: string;
+  note?: string;
+  updatedAt?: string | null;
+};
+
+export type ProjectPhaseFinancialPayload = {
+  expectedRevenue?: number | null;
+  expectedExpense?: number | null;
+  realizedRevenue?: number | null;
+  realizedExpense?: number | null;
+  potentialRevenueAmount?: number | null;
+  potentialCostAmount?: number | null;
+  realizedRevenueAmount?: number | null;
+  realizedCostAmount?: number | null;
+  currency?: string;
+  note?: string;
+};
+
+export type ProjectPhase = {
+  id?: string;
+  _id?: string;
+  title: string;
+  description?: string;
+  assignedUserIds: UserReference[];
+  startDate: string;
+  endDate: string;
+  financial?: ProjectPhaseFinancial;
+  financialSummary?: {
+    expectedProfit?: number | null;
+    realizedProfit?: number | null;
+    revenueAchievementPercent?: number | null;
+    expenseUsagePercent?: number | null;
+  };
+  createdBy?: UserReference | null;
+  updatedBy?: UserReference | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ProjectPhasePayload = {
+  id?: string;
+  _id?: string;
+  title: string;
+  description?: string;
+  assignedUserIds: string[];
+  startDate: string;
+  endDate: string;
+  financial?: ProjectPhaseFinancialPayload;
+};
+
+export type ProjectPhaseSummary = {
+  phaseCount?: number;
+  totalPhases?: number;
+  totalExpectedRevenue?: number;
+  totalExpectedExpense?: number;
+  totalRealizedRevenue?: number;
+  totalRealizedExpense?: number;
+  expectedBalance?: number;
+  realizedBalance?: number;
+  totalPotentialRevenue?: number;
+  totalPotentialCost?: number;
+  totalRealizedCost?: number;
+  potentialBalance?: number;
+};
+
 export type Project = {
   id?: string;
   _id?: string;
@@ -77,6 +151,8 @@ export type Project = {
   dueDate?: string | null;
   ownerId?: UserReference | null;
   assignedUserIds: UserReference[];
+  phases?: ProjectPhase[];
+  phaseSummary?: ProjectPhaseSummary;
   language?: 'fa';
   direction?: 'rtl';
   createdBy?: UserReference | null;
@@ -155,11 +231,14 @@ export type CalendarEvent = {
   type:
     | 'project_start'
     | 'project_due'
+    | 'phase_start'
+    | 'phase_end'
     | 'task_start'
     | 'task_due'
     | 'task_completed';
   projectId: string;
   taskId?: string;
+  phaseId?: string;
   start: string;
   end?: string;
   status: ProjectStatus | ProjectTaskStatus | string;
@@ -176,6 +255,7 @@ export type ProjectPayload = {
   dueDate?: string | null;
   ownerId: string;
   assignedUserIds: string[];
+  phases?: ProjectPhasePayload[];
 };
 
 export type ProjectTaskPayload = {
@@ -203,6 +283,7 @@ export type ProjectListResponse = {
 };
 
 export type ProjectImportError = {
+  sheet?: 'Projects' | 'Phases';
   rowNumber: number;
   title?: string;
   message: string;
@@ -212,11 +293,17 @@ export type ProjectImportCreatedItem = {
   rowNumber: number;
   id: string;
   title: string;
+  phaseCount?: number;
+  staffingRequired?: boolean;
 };
 
 export type ProjectImportResult = {
-  totalRows: number;
+  staffingMode?: 'post_import' | string;
+  totalProjectRows?: number;
+  totalPhaseRows?: number;
+  totalRows?: number;
   createdCount: number;
+  createdPhaseCount?: number;
   skippedCount: number;
   failedCount: number;
   created: ProjectImportCreatedItem[];
@@ -286,6 +373,10 @@ export const getProjectId = (project: Project): string => {
   return project.id || project._id || '';
 };
 
+export const getPhaseId = (phase: ProjectPhase): string => {
+  return phase.id || phase._id || '';
+};
+
 export const getTaskId = (task: ProjectTask): string => {
   return task.id || task._id || '';
 };
@@ -309,5 +400,7 @@ export const isManagerUser = (user?: UserSummary | null): boolean => {
 export const isEmployeeUser = (user?: UserSummary | null): boolean => {
   if (!user?.role) return false;
 
-  return String(user.role).toLowerCase() === 'employee';
+  const role = String(user.role).toLowerCase();
+
+  return role === 'employee' || role === 'expert';
 };

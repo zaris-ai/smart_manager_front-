@@ -96,9 +96,6 @@ export type UserPayload = {
   profile: UserProfile;
   managerId?: string | null;
 
-  telegramUserId?: string;
-  telegramChatId?: string;
-  telegramUsername?: string;
 };
 
 export type UserListResponse = {

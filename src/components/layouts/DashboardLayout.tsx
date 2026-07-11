@@ -30,7 +30,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   return (
     <div
-      className="min-h-screen bg-base-200 p-4 text-base-content transition-colors"
+      className="avid-dashboard-shell min-h-screen p-3 text-base-content transition-colors sm:p-4"
       dir="rtl"
     >
       {sidebarOpen ? (
@@ -64,7 +64,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           onLogout={handleLogout}
         />
 
-        <main className="mt-4 p-6">{children}</main>
+        <main className="mt-4 px-1 pb-8 pt-3 sm:px-3 lg:px-6">{children}</main>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import ShamsiDateInput from '@/components/common/ShamsiDateInput';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { userService } from '@/services/user.service';
@@ -270,23 +271,17 @@ export const TaskFormModal = ({
                 </select>
               </label>
 
-              <label className="form-control">
-                <span className="label label-text">تاریخ شروع</span>
-                <input
-                  type="date"
-                  className="input input-bordered"
-                  {...register('startDate')}
-                />
-              </label>
+              <ShamsiDateInput
+                label="تاریخ شروع"
+                value={watch('startDate')}
+                onChange={(value) => setValue('startDate', value, { shouldDirty: true })}
+              />
 
-              <label className="form-control">
-                <span className="label label-text">موعد انجام</span>
-                <input
-                  type="date"
-                  className="input input-bordered"
-                  {...register('dueDate')}
-                />
-              </label>
+              <ShamsiDateInput
+                label="موعد انجام"
+                value={watch('dueDate')}
+                onChange={(value) => setValue('dueDate', value, { shouldDirty: true })}
+              />
             </div>
           </section>
 

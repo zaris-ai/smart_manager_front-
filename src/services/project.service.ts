@@ -10,6 +10,9 @@ import {
   ProjectImportResult,
   ProjectListResponse,
   ProjectPayload,
+  ProjectPhase,
+  ProjectPhaseFinancialPayload,
+  ProjectPhasePayload,
   ProjectProgressNote,
   ProjectTask,
   ProjectTaskPayload,
@@ -142,7 +145,6 @@ type ProjectRequestPayload = ProjectPayload & {
   members?: ProjectMemberPayload[];
 };
 
-
 const defaultPagination: PaginationState = {
   total: 0,
   page: 1,
@@ -197,11 +199,71 @@ const normalizeListResponse = (
   };
 };
 
+const normalizeAmount = (value?: number | string | null): number => {
+  const amount = Number(value || 0);
+
+  if (!Number.isFinite(amount) || amount < 0) return 0;
+
+  return Math.round(amount);
+};
+
+const buildPhaseFinancialPayload = (
+  payload?: ProjectPhaseFinancialPayload,
+): ProjectPhaseFinancialPayload => {
+  const expectedRevenue = normalizeAmount(
+    payload?.expectedRevenue ?? payload?.potentialRevenueAmount,
+  );
+  const expectedExpense = normalizeAmount(
+    payload?.expectedExpense ?? payload?.potentialCostAmount,
+  );
+  const realizedRevenue = normalizeAmount(
+    payload?.realizedRevenue ?? payload?.realizedRevenueAmount,
+  );
+  const realizedExpense = normalizeAmount(
+    payload?.realizedExpense ?? payload?.realizedCostAmount,
+  );
+
+  return {
+    expectedRevenue,
+    expectedExpense,
+    realizedRevenue,
+    realizedExpense,
+    potentialRevenueAmount: expectedRevenue,
+    potentialCostAmount: expectedExpense,
+    realizedRevenueAmount: realizedRevenue,
+    realizedCostAmount: realizedExpense,
+    currency: payload?.currency || 'IRR',
+    note: payload?.note || '',
+  };
+};
+
+const buildPhaseRequestPayload = (
+  phase: Partial<ProjectPhasePayload>,
+): Record<string, unknown> => ({
+  id: phase.id || undefined,
+  _id: phase._id || undefined,
+  title: phase.title || '',
+  description: phase.description || '',
+  assignedUserIds: phase.assignedUserIds || [],
+  startDate: phase.startDate || '',
+  endDate: phase.endDate || '',
+  financial: buildPhaseFinancialPayload(phase.financial),
+});
+
+const normalizePhasesResponse = (responseData: unknown): ProjectPhase[] => {
+  const data = unwrapData<any>(responseData as any);
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.phases)) return data.phases;
+  if (Array.isArray(data?.project?.phases)) return data.project.phases;
+
+  return [];
+};
+
 const getFileTaskId = (file: ProjectFile): string => {
   const taskRef = file.taskId as unknown;
 
   if (!taskRef) return '';
-
   if (typeof taskRef === 'string') return taskRef;
 
   const taskObject = taskRef as {
@@ -221,7 +283,6 @@ const attachFilesToTasks = (
       const taskId = getFileTaskId(file);
 
       if (!taskId) return acc;
-
       if (!acc[taskId]) acc[taskId] = [];
 
       acc[taskId].push(file);
@@ -235,7 +296,6 @@ const attachFilesToTasks = (
     const taskId = getTaskId(task);
     const currentFiles = Array.isArray(task.files) ? task.files : [];
     const attachedFiles = filesByTaskId[taskId] || [];
-
     const mergedFilesMap = new Map<string, ProjectFile>();
 
     [...currentFiles, ...attachedFiles].forEach((file) => {
@@ -302,17 +362,11 @@ const uploadTaskFilesRequest = async (
   return attachProjectFilesToTask(projectId, task);
 };
 
-
 export const getProjectRoleId = (
   role: string | ProjectRole | null | undefined,
 ): string => {
-  if (!role) {
-    return '';
-  }
-
-  if (typeof role === 'string') {
-    return role;
-  }
+  if (!role) return '';
+  if (typeof role === 'string') return role;
 
   return String(role.id || role._id || '');
 };
@@ -320,28 +374,21 @@ export const getProjectRoleId = (
 export const getProjectRoleTitle = (
   role: string | ProjectRole | null | undefined,
 ): string => {
-  if (!role) {
-    return '';
-  }
-
-  if (typeof role === 'string') {
-    return role;
-  }
+  if (!role) return '';
+  if (typeof role === 'string') return role;
 
   return String(role.title || role.name || '');
 };
 
-const normalizeProjectRole = (role: any): ProjectRole => {
-  return {
-    ...role,
-    id: String(role.id || role._id || ''),
-    title: String(role.title || role.name || ''),
-    description: role.description || '',
-    isActive: role.isActive !== false,
-    sortOrder: Number(role.sortOrder ?? role.displayOrder ?? 0),
-    displayOrder: Number(role.displayOrder ?? role.sortOrder ?? 0),
-  };
-};
+const normalizeProjectRole = (role: any): ProjectRole => ({
+  ...role,
+  id: String(role.id || role._id || ''),
+  title: String(role.title || role.name || ''),
+  description: role.description || '',
+  isActive: role.isActive !== false,
+  sortOrder: Number(role.sortOrder ?? role.displayOrder ?? 0),
+  displayOrder: Number(role.displayOrder ?? role.sortOrder ?? 0),
+});
 
 const buildProjectRequestPayload = (
   payload: Partial<ProjectRequestPayload>,
@@ -356,6 +403,10 @@ const buildProjectRequestPayload = (
 
   if ('assignedUserIds' in requestPayload) {
     requestPayload.assignedUserIds = requestPayload.assignedUserIds || [];
+  }
+
+  if ('phases' in requestPayload && Array.isArray(payload.phases)) {
+    requestPayload.phases = payload.phases.map(buildPhaseRequestPayload);
   }
 
   if ('projectMembers' in requestPayload && Array.isArray(payload.projectMembers)) {
@@ -374,33 +425,13 @@ const buildProjectRequestPayload = (
 const buildTaskRequestPayload = (payload: Partial<ProjectTaskPayload>) => {
   const requestPayload: Record<string, unknown> = {};
 
-  if (payload.title !== undefined) {
-    requestPayload.title = payload.title;
-  }
-
-  if (payload.description !== undefined) {
-    requestPayload.description = payload.description || '';
-  }
-
-  if (payload.assignedUserIds !== undefined) {
-    requestPayload.assignedUserIds = payload.assignedUserIds || [];
-  }
-
-  if (payload.status !== undefined) {
-    requestPayload.status = payload.status;
-  }
-
-  if (payload.priority !== undefined) {
-    requestPayload.priority = payload.priority;
-  }
-
-  if (payload.startDate !== undefined) {
-    requestPayload.startDate = payload.startDate || null;
-  }
-
-  if (payload.dueDate !== undefined) {
-    requestPayload.dueDate = payload.dueDate || null;
-  }
+  if (payload.title !== undefined) requestPayload.title = payload.title;
+  if (payload.description !== undefined) requestPayload.description = payload.description || '';
+  if (payload.assignedUserIds !== undefined) requestPayload.assignedUserIds = payload.assignedUserIds || [];
+  if (payload.status !== undefined) requestPayload.status = payload.status;
+  if (payload.priority !== undefined) requestPayload.priority = payload.priority;
+  if (payload.startDate !== undefined) requestPayload.startDate = payload.startDate || null;
+  if (payload.dueDate !== undefined) requestPayload.dueDate = payload.dueDate || null;
 
   return requestPayload;
 };
@@ -453,6 +484,19 @@ export const projectService = {
 
       return unwrapData<ProjectImportResult>(response.data);
     } catch (error) {
+      const importError = error as {
+        response?: {
+          data?: {
+            data?: ProjectImportResult;
+          };
+        };
+      };
+      const validationResult = importError.response?.data?.data;
+
+      if (validationResult && Array.isArray(validationResult.errors)) {
+        return validationResult;
+      }
+
       throw new Error(unwrapMessage(error, 'خطا در ورود پروژه‌ها از اکسل'));
     }
   },
@@ -491,6 +535,96 @@ export const projectService = {
     }
   },
 
+  async listProjectPhases(projectId: string): Promise<ProjectPhase[]> {
+    try {
+      const response = await apiClient.get(`/projects/${projectId}/phases`);
+
+      return normalizePhasesResponse(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در دریافت فازهای پروژه'));
+    }
+  },
+
+  async createProjectPhase(
+    projectId: string,
+    payload: ProjectPhasePayload,
+  ): Promise<Project> {
+    try {
+      const response = await apiClient.post(
+        `/projects/${projectId}/phases`,
+        buildPhaseRequestPayload(payload),
+      );
+
+      return unwrapData<Project>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ایجاد فاز پروژه'));
+    }
+  },
+
+  async getProjectPhase(
+    projectId: string,
+    phaseId: string,
+  ): Promise<ProjectPhase> {
+    try {
+      const response = await apiClient.get(`/projects/${projectId}/phases/${phaseId}`);
+
+      return unwrapData<ProjectPhase>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در دریافت فاز پروژه'));
+    }
+  },
+
+  async updateProjectPhase(
+    projectId: string,
+    phaseId: string,
+    payload: Partial<ProjectPhasePayload>,
+  ): Promise<Project> {
+    try {
+      const response = await apiClient.patch(
+        `/projects/${projectId}/phases/${phaseId}`,
+        buildPhaseRequestPayload({
+          title: payload.title || '',
+          description: payload.description || '',
+          assignedUserIds: payload.assignedUserIds || [],
+          startDate: payload.startDate || '',
+          endDate: payload.endDate || '',
+          financial: payload.financial,
+        }),
+      );
+
+      return unwrapData<Project>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ویرایش فاز پروژه'));
+    }
+  },
+
+  async updateProjectPhaseFinancial(
+    projectId: string,
+    phaseId: string,
+    payload: ProjectPhaseFinancialPayload,
+  ): Promise<ProjectPhase> {
+    try {
+      const response = await apiClient.patch(
+        `/projects/${projectId}/phases/${phaseId}/financial`,
+        buildPhaseFinancialPayload(payload),
+      );
+
+      return unwrapData<ProjectPhase>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ثبت مالی فاز پروژه'));
+    }
+  },
+
+  async deleteProjectPhase(projectId: string, phaseId: string): Promise<Project> {
+    try {
+      const response = await apiClient.delete(`/projects/${projectId}/phases/${phaseId}`);
+
+      return unwrapData<Project>(response.data);
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در حذف فاز پروژه'));
+    }
+  },
+
   async assignUsers(projectId: string, userIds: string[]): Promise<Project> {
     try {
       const response = await apiClient.post(`/projects/${projectId}/users`, {
@@ -514,7 +648,6 @@ export const projectService = {
       throw new Error(unwrapMessage(error, 'خطا در حذف کاربر از پروژه'));
     }
   },
-
 
   async updateProjectMember(
     projectId: string,
@@ -631,11 +764,7 @@ export const projectService = {
       const createdTaskId = getTaskId(createdTask);
 
       if (payload.files?.length && createdTaskId) {
-        return await uploadTaskFilesRequest(
-          projectId,
-          createdTaskId,
-          payload.files,
-        );
+        return await uploadTaskFilesRequest(projectId, createdTaskId, payload.files);
       }
 
       return await attachProjectFilesToTask(projectId, createdTask);
@@ -729,9 +858,7 @@ export const projectService = {
 
         formData.append('note', payload.note || '');
 
-        if (payload.authorId) {
-          formData.append('authorId', payload.authorId);
-        }
+        if (payload.authorId) formData.append('authorId', payload.authorId);
 
         if (
           payload.progressPercent !== undefined &&
@@ -740,9 +867,7 @@ export const projectService = {
           formData.append('progressPercent', String(payload.progressPercent));
         }
 
-        if (payload.statusSnapshot) {
-          formData.append('statusSnapshot', payload.statusSnapshot);
-        }
+        if (payload.statusSnapshot) formData.append('statusSnapshot', payload.statusSnapshot);
 
         formData.append('file', payload.file);
 
@@ -802,13 +927,8 @@ export const projectService = {
       formData.append('file', payload.file);
       formData.append('category', payload.category || 'other');
 
-      if (payload.progressNoteId) {
-        formData.append('progressNoteId', payload.progressNoteId);
-      }
-
-      if (payload.taskId) {
-        formData.append('taskId', payload.taskId);
-      }
+      if (payload.progressNoteId) formData.append('progressNoteId', payload.progressNoteId);
+      if (payload.taskId) formData.append('taskId', payload.taskId);
 
       const response = await apiClient.post(
         `/projects/${projectId}/files`,

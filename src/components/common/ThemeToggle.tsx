@@ -18,7 +18,7 @@ interface ThemeToggleProps {
   variant?: 'icon' | 'button' | 'dropdown';
 }
 
-type SelectableTheme = 'light' | 'dark' | 'system';
+type SelectableTheme = 'light' | 'dark' | 'night' | 'dim' | 'business' | 'system';
 
 const DARK_THEME_NAMES = new Set<string>([
   'dark',
@@ -90,6 +90,9 @@ const ThemeToggle: React.FC<ThemeToggleProps> = ({
 
   const getThemeLabel = (themeValue: string) => {
     if (themeValue === 'dark') return 'حالت شب';
+    if (themeValue === 'night') return 'شب مدیریتی';
+    if (themeValue === 'dim') return 'شب ملایم';
+    if (themeValue === 'business') return 'شب سازمانی';
     if (themeValue === 'light') return 'حالت روز';
 
     if (themeValue === 'system') {
@@ -143,7 +146,7 @@ const ThemeToggle: React.FC<ThemeToggleProps> = ({
               onClick={() => setIsOpen(false)}
             />
 
-            <div className="absolute left-0 mt-2 w-48 bg-base-100 rounded-lg shadow-lg border border-base-300 overflow-hidden z-20">
+            <div className="absolute left-0 z-20 mt-2 max-h-[70vh] w-56 overflow-y-auto rounded-2xl border border-base-300 bg-base-100 shadow-xl">
               <button
                 type="button"
                 onClick={() => handleThemeSelect('light')}
@@ -170,6 +173,51 @@ const ThemeToggle: React.FC<ThemeToggleProps> = ({
               >
                 <MoonIcon className="w-5 h-5" />
                 <span>حالت شب</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleThemeSelect('night')}
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-start',
+                  theme === 'night'
+                    ? 'bg-primary/10 text-primary'
+                    : 'hover:bg-base-200 text-base-content',
+                )}
+              >
+                <MoonIcon className="w-5 h-5" />
+                <div className="flex flex-col items-start">
+                  <span>شب مدیریتی</span>
+                  <span className="text-xs opacity-70">بهینه برای پنل پروژه</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleThemeSelect('dim')}
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-start',
+                  theme === 'dim'
+                    ? 'bg-primary/10 text-primary'
+                    : 'hover:bg-base-200 text-base-content',
+                )}
+              >
+                <MoonIcon className="w-5 h-5" />
+                <span>شب ملایم</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleThemeSelect('business')}
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-start',
+                  theme === 'business'
+                    ? 'bg-primary/10 text-primary'
+                    : 'hover:bg-base-200 text-base-content',
+                )}
+              >
+                <MoonIcon className="w-5 h-5" />
+                <span>شب سازمانی</span>
               </button>
 
               <button

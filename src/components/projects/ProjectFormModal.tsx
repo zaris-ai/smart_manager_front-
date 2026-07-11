@@ -1,3 +1,4 @@
+import ShamsiDateInput from '@/components/common/ShamsiDateInput';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
@@ -768,48 +769,24 @@ export const ProjectFormModal = ({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="form-control">
-                    <span className="label label-text font-semibold">تاریخ شروع</span>
-                    <input
-                      type="date"
-                      className={`input input-bordered bg-white dark:bg-gray-950 ${
-                        errors.startDate ? 'input-error' : ''
-                      }`}
-                      {...register('startDate', {
-                        required: 'تاریخ شروع الزامی است.',
-                      })}
-                    />
-                    {errors.startDate?.message ? (
-                      <span className="mt-1 text-xs text-error">
-                        {errors.startDate.message}
-                      </span>
-                    ) : null}
-                  </label>
+                  <ShamsiDateInput
+                    label="تاریخ شروع"
+                    value={watchedStartDate}
+                    onChange={(value) =>
+                      setValue('startDate', value, { shouldDirty: true, shouldValidate: true })
+                    }
+                    required
+                    error={errors.startDate?.message}
+                  />
 
-                  <label className="form-control">
-                    <span className="label label-text font-semibold">موعد تحویل</span>
-                    <input
-                      type="date"
-                      className={`input input-bordered bg-white dark:bg-gray-950 ${
-                        errors.dueDate ? 'input-error' : ''
-                      }`}
-                      {...register('dueDate', {
-                        validate: (value) => {
-                          if (!value || !watchedStartDate) return true;
-
-                          return (
-                            new Date(value) >= new Date(watchedStartDate) ||
-                            'موعد تحویل نمی‌تواند قبل از تاریخ شروع باشد.'
-                          );
-                        },
-                      })}
-                    />
-                    {errors.dueDate?.message ? (
-                      <span className="mt-1 text-xs text-error">
-                        {errors.dueDate.message}
-                      </span>
-                    ) : null}
-                  </label>
+                  <ShamsiDateInput
+                    label="موعد تحویل"
+                    value={watchedDueDate}
+                    onChange={(value) =>
+                      setValue('dueDate', value, { shouldDirty: true, shouldValidate: true })
+                    }
+                    error={errors.dueDate?.message}
+                  />
                 </div>
               </section>
 
@@ -984,42 +961,22 @@ export const ProjectFormModal = ({
                                       </a>
                                     ) : null}
                                   </label>
-
-                                  <label className="form-control">
-                                    <span className="label label-text text-xs font-semibold">
-                                      شروع همکاری
-                                    </span>
-                                    <input
-                                      type="date"
-                                      className="input input-bordered bg-white dark:bg-gray-950"
-                                      value={draft.startedAt}
-                                      onChange={(event) =>
-                                        updateMemberDraft(
-                                          draft.userId,
-                                          'startedAt',
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                  </label>
-
-                                  <label className="form-control">
-                                    <span className="label label-text text-xs font-semibold">
-                                      پایان احتمالی
-                                    </span>
-                                    <input
-                                      type="date"
-                                      className="input input-bordered bg-white dark:bg-gray-950"
-                                      value={draft.expectedFinishedAt}
-                                      onChange={(event) =>
-                                        updateMemberDraft(
-                                          draft.userId,
-                                          'expectedFinishedAt',
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                  </label>
+                                  <ShamsiDateInput
+                                    label="شروع همکاری"
+                                    value={draft.startedAt}
+                                    onChange={(value) =>
+                                      updateMemberDraft(draft.userId, 'startedAt', value)
+                                    }
+                                    inputClassName="bg-white dark:bg-gray-950"
+                                  />
+                                  <ShamsiDateInput
+                                    label="پایان احتمالی"
+                                    value={draft.expectedFinishedAt}
+                                    onChange={(value) =>
+                                      updateMemberDraft(draft.userId, 'expectedFinishedAt', value)
+                                    }
+                                    inputClassName="bg-white dark:bg-gray-950"
+                                  />
                                 </div>
                               </div>
                             );

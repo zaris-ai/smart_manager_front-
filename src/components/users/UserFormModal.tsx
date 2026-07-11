@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import {
   CheckCircleIcon,
@@ -47,9 +48,6 @@ const defaultValues: UserPayload = {
     bio: '',
   },
   managerId: null,
-  telegramUserId: '',
-  telegramChatId: '',
-  telegramUsername: '',
 };
 
 const roleCards: Record<
@@ -79,13 +77,6 @@ const roleCards: Record<
     className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     activeClassName: 'ring-emerald-500 border-emerald-500 bg-emerald-100',
   },
-};
-
-const normalizeTelegramUsername = (value?: string): string => {
-  return String(value || '')
-    .trim()
-    .replace(/^@/, '')
-    .toLowerCase();
 };
 
 const UserFormModal = ({
@@ -170,9 +161,6 @@ const UserFormModal = ({
             : user.managerId
               ? getUserId(user.managerId)
               : null,
-        telegramUserId: user.telegramUserId || '',
-        telegramChatId: user.telegramChatId || '',
-        telegramUsername: normalizeTelegramUsername(user.telegramUsername),
       });
     } else {
       reset(defaultValues);
@@ -193,9 +181,6 @@ const UserFormModal = ({
         status: normalizeUserStatus(values.status),
         managerId: normalizedRole === 'expert' ? values.managerId || null : null,
         password: values.password || undefined,
-        telegramUserId: String(values.telegramUserId || '').trim(),
-        telegramChatId: String(values.telegramChatId || '').trim(),
-        telegramUsername: normalizeTelegramUsername(values.telegramUsername),
       };
 
       if (isEditMode && user) {
@@ -228,7 +213,7 @@ const UserFormModal = ({
                   {isEditMode ? 'ویرایش کاربر' : 'ایجاد کاربر جدید'}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  اطلاعات کاربر، نقش، پروفایل کاری و اتصال ربات تلگرام را مدیریت کنید.
+                  اطلاعات هویتی، نقش و پروفایل کاری کاربر را مدیریت کنید. اتصال تلگرام از صفحه اختصاصی ربات انجام می‌شود.
                 </p>
               </div>
             </div>
@@ -427,59 +412,20 @@ const UserFormModal = ({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4 flex items-start justify-between gap-4">
+          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm dark:border-sky-900 dark:bg-sky-950/40">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h4 className="font-bold text-gray-900 dark:text-gray-100">
-                  اتصال ربات تلگرام
-                </h4>
-                <p className="mt-1 text-sm leading-6 text-gray-500">
-                  این فیلدها برای اتصال کاربر پنل به ربات تلگرام استفاده می‌شود.
+                <div className="flex items-center gap-2 font-bold text-sky-950 dark:text-sky-100">
+                  <InformationCircleIcon className="h-5 w-5" />
+                  اتصال امن ربات تلگرام
+                </div>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-sky-900/75 dark:text-sky-100/75">
+                  شناسه‌های تلگرام در فرم کاربر وارد نمی‌شوند. پس از ذخیره کاربر، از صفحه مدیریت ربات یک کد یک‌بارمصرف بسازید تا خود کاربر حساب تلگرامش را متصل کند.
                 </p>
               </div>
-
-              <div className="badge badge-info gap-1">
-                <InformationCircleIcon className="h-4 w-4" />
-                اختیاری
-              </div>
-            </div>
-
-            <div className="alert mb-4 border border-sky-200 bg-sky-50 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-              <span>
-                کاربر باید در تلگرام به ربات پیام <span dir="ltr">/start</span> بدهد. اگر متصل نباشد، ربات Telegram User ID و Telegram Chat ID را نمایش می‌دهد. همان مقادیر را اینجا وارد کنید.
-              </span>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <label className="form-control">
-                <span className="label label-text">Telegram User ID</span>
-                <input
-                  dir="ltr"
-                  className="input input-bordered text-left"
-                  placeholder="مثلاً 123456789"
-                  {...register('telegramUserId')}
-                />
-              </label>
-
-              <label className="form-control">
-                <span className="label label-text">Telegram Chat ID</span>
-                <input
-                  dir="ltr"
-                  className="input input-bordered text-left"
-                  placeholder="مثلاً 123456789"
-                  {...register('telegramChatId')}
-                />
-              </label>
-
-              <label className="form-control">
-                <span className="label label-text">Telegram Username</span>
-                <input
-                  dir="ltr"
-                  className="input input-bordered text-left"
-                  placeholder="بدون @"
-                  {...register('telegramUsername')}
-                />
-              </label>
+              <Link href="/dashboard/telegram" className="btn btn-sm btn-primary">
+                مدیریت اتصال تلگرام
+              </Link>
             </div>
           </section>
 
