@@ -10,6 +10,7 @@ import {
   PaperAirplaneIcon,
   RectangleGroupIcon,
   UsersIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline';
 
 export interface MenuItem {
@@ -64,6 +65,12 @@ export const menuItems: MenuItem[] = [
     icon: PaperAirplaneIcon,
     section: 'users',
     allowedRoles: ['manager', 'admin', 'super_admin', 'project_owner'],
+  },
+  {
+    label: 'تحلیل هوشمند پروژه',
+    href: '/dashboard/repository-analysis',
+    icon: CpuChipIcon,
+    section: 'projects',
   },
   {
     label: 'کاربران',

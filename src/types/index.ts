@@ -1135,3 +1135,5 @@ export interface ITeamHierarchyResponse {
   data: IOrganization[];
   message?: string;
 }
+
+export * from './repository-analysis';
