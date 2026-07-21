@@ -113,6 +113,7 @@ export const ROUTES = {
     ACCESS_MANAGEMENT: '/dashboard/access-management',
     ROLE_PERMISSIONS: '/dashboard/role-permissions',
     ROLES: '/dashboard/roles',
+    EXPERT_WORK_LOGS: '/dashboard/expert-work-logs',
     ROLE_DETAIL: (roleId: string | number) => `/dashboard/roles/${roleId}`,
   },
 } as const;

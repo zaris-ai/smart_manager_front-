@@ -1,4 +1,5 @@
 import ShamsiDateInput from '@/components/common/ShamsiDateInput';
+import { UserAvatar } from '@/components/common';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
@@ -27,7 +28,6 @@ import {
   ExclamationTriangleIcon,
   FlagIcon,
   MagnifyingGlassIcon,
-  UserCircleIcon,
   UserGroupIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -75,9 +75,6 @@ const getUserId = (user: UserSummary): string => {
   return user.id || user._id || '';
 };
 
-const getInitials = (user: UserSummary): string => {
-  return getUserDisplayName(user).slice(0, 2);
-};
 
 const normalizeMemberDraftsFromProject = (
   project: Project | null | undefined,
@@ -865,9 +862,14 @@ export const ProjectFormModal = ({
                           return (
                             <span
                               key={userId}
-                              className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"
+                              className="inline-flex items-center gap-2 rounded-full bg-primary/10 py-1 pl-3 pr-1 text-xs font-semibold text-primary"
                             >
-                              {getUserDisplayName(user)}
+                              <UserAvatar
+                                userId={userId}
+                                name={getUserDisplayName(user)}
+                                size="xs"
+                              />
+                              <span className="break-words">{getUserDisplayName(user)}</span>
                               <button
                                 type="button"
                                 className="rounded-full hover:bg-primary/20"
@@ -903,12 +905,19 @@ export const ProjectFormModal = ({
                                 className="rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900"
                               >
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                  <div>
-                                    <div className="font-bold text-gray-900 dark:text-gray-100">
-                                      {user ? getUserDisplayName(user) : 'کاربر انتخاب‌شده'}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      {isOwner ? 'مسئول اصلی پروژه' : 'عضو پروژه'}
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <UserAvatar
+                                      userId={draft.userId}
+                                      name={user ? getUserDisplayName(user) : 'کاربر انتخاب‌شده'}
+                                      size="sm"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="break-words font-bold text-gray-900 dark:text-gray-100">
+                                        {user ? getUserDisplayName(user) : 'کاربر انتخاب‌شده'}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        {isOwner ? 'مسئول اصلی پروژه' : 'عضو پروژه'}
+                                      </div>
                                     </div>
                                   </div>
 
@@ -1011,18 +1020,15 @@ export const ProjectFormModal = ({
                                 }`}
                                 onClick={() => toggleAssignedUser(userId)}
                               >
-                                <div
-                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                                    selected
-                                      ? 'bg-primary text-white'
-                                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
-                                  }`}
-                                >
-                                  {getInitials(user)}
-                                </div>
+                                <UserAvatar
+                                  userId={userId}
+                                  name={getUserDisplayName(user)}
+                                  size="sm"
+                                  className={selected ? 'border-primary ring-2 ring-primary/25' : ''}
+                                />
 
                                 <div className="min-w-0 flex-1">
-                                  <div className="truncate text-sm font-bold text-gray-900 dark:text-gray-100">
+                                  <div className="break-words text-sm font-bold text-gray-900 dark:text-gray-100">
                                     {getUserDisplayName(user)}
                                   </div>
                                   <div className="truncate text-xs text-gray-500">
@@ -1071,9 +1077,19 @@ export const ProjectFormModal = ({
 
                   <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950">
                     <div className="text-xs text-gray-500">مسئول پروژه</div>
-                    <div className="mt-1 flex items-center gap-2 font-bold text-gray-900 dark:text-gray-100">
-                      <UserCircleIcon className="h-5 w-5 text-gray-400" />
-                      {selectedOwner ? getUserDisplayName(selectedOwner) : 'انتخاب نشده'}
+                    <div className="mt-2 flex items-center gap-2 font-bold text-gray-900 dark:text-gray-100">
+                      {selectedOwner ? (
+                        <>
+                          <UserAvatar
+                            userId={getUserId(selectedOwner)}
+                            name={getUserDisplayName(selectedOwner)}
+                            size="sm"
+                          />
+                          <span className="break-words">{getUserDisplayName(selectedOwner)}</span>
+                        </>
+                      ) : (
+                        <span>انتخاب نشده</span>
+                      )}
                     </div>
                   </div>
 
@@ -1085,12 +1101,19 @@ export const ProjectFormModal = ({
                           const user = activeUsers.find((item) => getUserId(item) === member.userId);
 
                           return (
-                            <div key={member.userId} className="rounded-lg bg-white p-2 dark:bg-gray-900">
-                              <div className="font-bold text-gray-900 dark:text-gray-100">
-                                {user ? getUserDisplayName(user) : 'عضو پروژه'}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {member.roleInProject || 'عضو پروژه'}
+                            <div key={member.userId} className="flex items-center gap-3 rounded-lg bg-white p-2 dark:bg-gray-900">
+                              <UserAvatar
+                                userId={member.userId}
+                                name={user ? getUserDisplayName(user) : 'عضو پروژه'}
+                                size="sm"
+                              />
+                              <div className="min-w-0">
+                                <div className="break-words font-bold text-gray-900 dark:text-gray-100">
+                                  {user ? getUserDisplayName(user) : 'عضو پروژه'}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {member.roleInProject || 'عضو پروژه'}
+                                </div>
                               </div>
                             </div>
                           );

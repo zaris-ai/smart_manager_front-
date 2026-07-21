@@ -39,6 +39,10 @@ export type TelegramOverview = {
     unlinkedUsers: number;
     activeReportSessions: number;
     activeTaskSessions: number;
+    activeFeatureSessions: number;
+    telegramWorkLogs: number;
+    telegramLeaveRequests: number;
+    telegramFeedback: number;
     telegramTasks: number;
     telegramReports: number;
     telegramFiles: number;

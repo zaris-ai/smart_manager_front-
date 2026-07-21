@@ -1,4 +1,5 @@
 import ShamsiDateInput from '@/components/common/ShamsiDateInput';
+import { UserAvatar } from '@/components/common';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { userService } from '@/services/user.service';
@@ -314,12 +315,20 @@ export const TaskFormModal = ({
                           : 'border-base-300 bg-base-100 hover:border-primary/50',
                       )}
                     >
-                      <span>
-                        <span className="block font-bold">
-                          {getUserDisplayName(user)}
-                        </span>
-                        <span className="mt-1 block text-xs text-base-content/55">
-                          {user.email || user.username || 'بدون اطلاعات تماس'}
+                      <span className="flex min-w-0 items-center gap-3">
+                        <UserAvatar
+                          userId={userId}
+                          name={getUserDisplayName(user)}
+                          size="sm"
+                          className={active ? 'border-primary ring-2 ring-primary/20' : ''}
+                        />
+                        <span className="min-w-0">
+                          <span className="block break-words font-bold">
+                            {getUserDisplayName(user)}
+                          </span>
+                          <span className="mt-1 block break-words text-xs text-base-content/55">
+                            {user.email || user.username || 'بدون اطلاعات تماس'}
+                          </span>
                         </span>
                       </span>
 

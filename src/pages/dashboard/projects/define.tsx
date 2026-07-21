@@ -2,9 +2,10 @@ import ShamsiDateInput from '@/components/common/ShamsiDateInput';
 import {
   DashboardPageHeader,
   SectionCard,
+  UserAvatar,
 } from '@/components/common';
 import { DashboardLayout } from '@/components/layouts';
-import { PhaseUserSearchPicker } from '@/components/projects';
+import PhaseFormModal from '@/components/projects/PhaseFormModal';
 import { projectService } from '@/services/project.service';
 import { userService } from '@/services/user.service';
 import {
@@ -25,8 +26,11 @@ import {
   BanknotesIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
+  ClockIcon,
+  PencilSquareIcon,
   PlusIcon,
   TrashIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
@@ -87,7 +91,10 @@ const DashboardProjectDefinitionPage = () => {
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [ownerId, setOwnerId] = useState('');
-  const [phases, setPhases] = useState<PhaseDraft[]>([createPhaseDraft(0)]);
+  const [phases, setPhases] = useState<PhaseDraft[]>([]);
+  const [phaseModalOpen, setPhaseModalOpen] = useState(false);
+  const [phaseModalMode, setPhaseModalMode] = useState<'create' | 'edit'>('create');
+  const [editingPhase, setEditingPhase] = useState<PhaseDraft | null>(null);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -134,50 +141,31 @@ const DashboardProjectDefinitionPage = () => {
     return phases.reduce((sum, phase) => sum + Number(phase.potentialCostAmount || 0), 0);
   }, [phases]);
 
-  const updatePhase = <K extends keyof PhaseDraft>(
-    localId: string,
-    key: K,
-    value: PhaseDraft[K],
-  ) => {
-    setPhases((previous) =>
-      previous.map((phase) =>
-        phase.localId === localId
-          ? {
-              ...phase,
-              [key]: value,
-            }
-          : phase,
-      ),
-    );
+  const addPhase = () => {
+    setPhaseModalMode('create');
+    setEditingPhase(createPhaseDraft(phases.length));
+    setPhaseModalOpen(true);
   };
 
-  const addPhase = () => {
-    setPhases((previous) => [...previous, createPhaseDraft(previous.length)]);
+  const editPhase = (phase: PhaseDraft) => {
+    setPhaseModalMode('edit');
+    setEditingPhase(phase);
+    setPhaseModalOpen(true);
+  };
+
+  const savePhase = (phase: PhaseDraft) => {
+    setPhases((previous) => {
+      const exists = previous.some((item) => item.localId === phase.localId);
+      return exists
+        ? previous.map((item) => (item.localId === phase.localId ? phase : item))
+        : [...previous, phase];
+    });
+    setPhaseModalOpen(false);
+    setEditingPhase(null);
   };
 
   const removePhase = (localId: string) => {
-    setPhases((previous) => {
-      if (previous.length === 1) return previous;
-
-      return previous.filter((phase) => phase.localId !== localId);
-    });
-  };
-
-  const togglePhaseUser = (localId: string, userId: string) => {
-    setPhases((previous) =>
-      previous.map((phase) => {
-        if (phase.localId !== localId) return phase;
-
-        const assignedUserIds = phase.assignedUserIds.includes(userId)
-          ? phase.assignedUserIds.filter((item) => item !== userId)
-          : [...phase.assignedUserIds, userId];
-
-        return {
-          ...phase,
-          assignedUserIds,
-        };
-      }),
-    );
+    setPhases((previous) => previous.filter((phase) => phase.localId !== localId));
   };
 
   const validateForm = (): string => {
@@ -283,7 +271,7 @@ const DashboardProjectDefinitionPage = () => {
         <DashboardPageHeader
           eyebrow="پروژه جدید"
           title="تعریف پروژه جدید"
-          description="فرم به چند بخش آرام‌تر تقسیم شده است. هر فاز به‌صورت جمع‌شونده نمایش داده می‌شود تا صفحه در پروژه‌های چندفازی شلوغ نشود."
+          description="ابتدا اطلاعات پایه پروژه را ثبت کنید، سپس فازهای اجرایی را در پنجره جداگانه بسازید و پیش از ثبت نهایی مرور کنید."
           backHref="/dashboard/projects"
           backLabel="بازگشت به پروژه‌ها"
         />
@@ -399,131 +387,199 @@ const DashboardProjectDefinitionPage = () => {
 
               <SectionCard
                 title="۲. فازهای پروژه"
-                description="هر فاز را فقط زمانی باز کنید که می‌خواهید جزئیات آن را تغییر دهید. بخش مالی ساده فاز حذف نشده و در همان کارت فاز باقی مانده است."
+                description="هر فاز در یک پنجره مستقل تعریف می‌شود. کارت‌های زیر زمان‌بندی، مسئولان و پیش‌بینی مالی هر فاز را بدون باز کردن فرم نشان می‌دهند."
                 actions={
-                  <button type="button" className="btn btn-outline btn-sm" onClick={addPhase}>
+                  <button type="button" className="btn btn-primary btn-sm gap-2" onClick={addPhase}>
                     <PlusIcon className="h-4 w-4" />
-                    افزودن فاز
+                    افزودن فاز جدید
                   </button>
                 }
+                bodyClassName="space-y-4"
               >
-                <div className="space-y-4">
-                  {phases.map((phase, index) => {
-                    return (
-                      <details
-                        key={phase.localId}
-                        className="collapse collapse-arrow rounded-2xl border border-base-300 bg-base-200/50"
-                        open={index === 0}
-                      >
-                        <summary className="collapse-title cursor-pointer px-5 py-4">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div className="min-w-0">
-                              <div className="text-xs font-black text-primary">فاز {index + 1}</div>
-                              <div className="mt-1 truncate text-base font-black text-base-content">
-                                {phase.title || `فاز ${index + 1}`}
+                {phases.length ? (
+                  <div className="grid gap-4">
+                    {phases.map((phase, index) => {
+                      const assignedUsers = users.filter((user) =>
+                        phase.assignedUserIds.includes(getUserId(user)),
+                      );
+                      const isComplete = Boolean(
+                        phase.title.trim() &&
+                          phase.startDate &&
+                          phase.endDate &&
+                          phase.assignedUserIds.length,
+                      );
+
+                      return (
+                        <article
+                          key={phase.localId}
+                          className="group overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-sm transition hover:border-primary/30 hover:shadow-md"
+                        >
+                          <div className={`h-1 ${isComplete ? 'bg-success' : 'bg-warning'}`} />
+                          <div className="p-4 sm:p-5">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="flex min-w-0 items-start gap-3">
+                                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                  <span className="text-[10px] font-bold">فاز</span>
+                                  <span className="text-lg font-black leading-none">
+                                    {(index + 1).toLocaleString('fa-IR')}
+                                  </span>
+                                </div>
+
+                                <div className="min-w-0 pt-0.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="truncate text-base font-black text-base-content sm:text-lg">
+                                      {phase.title || `فاز ${index + 1}`}
+                                    </h3>
+                                    <span
+                                      className={`badge badge-sm font-bold ${
+                                        isComplete
+                                          ? 'border-success/25 bg-success/10 text-success'
+                                          : 'border-warning/25 bg-warning/10 text-warning'
+                                      }`}
+                                    >
+                                      {isComplete ? 'آماده ثبت' : 'نیازمند تکمیل'}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 line-clamp-2 text-xs leading-6 text-base-content/50 sm:text-sm">
+                                    {phase.description || 'برای این فاز هنوز توضیحی ثبت نشده است.'}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="mt-1 text-xs text-base-content/50">
-                                {phase.startDate || 'شروع نامشخص'} تا {phase.endDate || 'پایان نامشخص'} · {phase.assignedUserIds.length} مسئول
+
+                              <div className="flex shrink-0 items-center gap-2 self-end lg:self-start">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm gap-1.5"
+                                  onClick={() => editPhase(phase)}
+                                >
+                                  <PencilSquareIcon className="h-4 w-4" />
+                                  ویرایش
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm btn-square text-error"
+                                  onClick={() => removePhase(phase.localId)}
+                                  aria-label={`حذف ${phase.title || `فاز ${index + 1}`}`}
+                                  title="حذف فاز"
+                                >
+                                  <TrashIcon className="h-4 w-4" />
+                                </button>
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-2 text-xs">
-                              <span className="badge badge-outline">
-                                درآمد: {formatAmount(phase.potentialRevenueAmount)}
-                              </span>
-                              <span className="badge badge-outline">
-                                هزینه: {formatAmount(phase.potentialCostAmount)}
-                              </span>
+                            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-2xl border border-base-300 bg-base-200/45 p-3">
+                                <div className="flex items-center gap-2 text-xs font-bold text-base-content/45">
+                                  <ClockIcon className="h-4 w-4 text-primary" />
+                                  بازه اجرا
+                                </div>
+                                <div className="mt-2 text-sm font-black text-base-content">
+                                  {phase.startDate || 'شروع نامشخص'}
+                                </div>
+                                <div className="mt-0.5 text-xs text-base-content/50">
+                                  تا {phase.endDate || 'پایان نامشخص'}
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-base-300 bg-base-200/45 p-3">
+                                <div className="flex items-center gap-2 text-xs font-bold text-base-content/45">
+                                  <UserGroupIcon className="h-4 w-4 text-primary" />
+                                  مسئولان فاز
+                                </div>
+                                <div className="mt-2 text-sm font-black text-base-content">
+                                  {phase.assignedUserIds.length.toLocaleString('fa-IR')} نفر
+                                </div>
+                                {assignedUsers.length ? (
+                                  <div className="mt-2 flex items-center">
+                                    {assignedUsers.slice(0, 4).map((user, avatarIndex) => (
+                                      <UserAvatar
+                                        key={getUserId(user)}
+                                        userId={getUserId(user)}
+                                        name={getUserDisplayName(user as any)}
+                                        size="xs"
+                                        className={avatarIndex ? '-mr-2 border-base-100' : 'border-base-100'}
+                                      />
+                                    ))}
+                                    {assignedUsers.length > 4 ? (
+                                      <span className="-mr-2 flex h-8 min-w-8 items-center justify-center rounded-full border-2 border-base-100 bg-primary px-2 text-[10px] font-black text-primary-content">
+                                        +{(assignedUsers.length - 4).toLocaleString('fa-IR')}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <div className="mt-0.5 text-xs text-base-content/50">هنوز انتخاب نشده</div>
+                                )}
+                              </div>
+
+                              <div className="rounded-2xl border border-success/20 bg-success/5 p-3">
+                                <div className="flex items-center gap-2 text-xs font-bold text-success/75">
+                                  <BanknotesIcon className="h-4 w-4" />
+                                  درآمد پیش‌بینی‌شده
+                                </div>
+                                <div className="mt-2 text-sm font-black text-success">
+                                  {formatAmount(phase.potentialRevenueAmount)}
+                                  <span className="mr-1 text-[10px] font-bold opacity-70">ریال</span>
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-error/20 bg-error/5 p-3">
+                                <div className="flex items-center gap-2 text-xs font-bold text-error/75">
+                                  <BanknotesIcon className="h-4 w-4" />
+                                  هزینه پیش‌بینی‌شده
+                                </div>
+                                <div className="mt-2 text-sm font-black text-error">
+                                  {formatAmount(phase.potentialCostAmount)}
+                                  <span className="mr-1 text-[10px] font-bold opacity-70">ریال</span>
+                                </div>
+                              </div>
                             </div>
+
+                            {assignedUsers.length ? (
+                              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-base-300 pt-4">
+                                <span className="ml-1 text-xs font-bold text-base-content/45">اعضای منتخب:</span>
+                                {assignedUsers.slice(0, 4).map((user) => {
+                                  const userId = getUserId(user);
+                                  return (
+                                    <span
+                                      key={userId}
+                                      className="inline-flex items-center gap-2 rounded-full border border-base-300 bg-base-100 py-1 pl-3 pr-1 text-[11px] font-bold"
+                                    >
+                                      <UserAvatar
+                                        userId={userId}
+                                        name={getUserDisplayName(user as any)}
+                                        size="xs"
+                                      />
+                                      <span className="break-words">{getUserDisplayName(user as any)}</span>
+                                    </span>
+                                  );
+                                })}
+                                {assignedUsers.length > 4 ? (
+                                  <span className="badge badge-primary badge-outline py-3 text-[11px] font-black">
+                                    +{(assignedUsers.length - 4).toLocaleString('fa-IR')}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
-                        </summary>
-
-                        <div className="collapse-content px-5 pb-5">
-                          <div className="mb-4 flex justify-end">
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm text-error"
-                              disabled={phases.length === 1}
-                              onClick={() => removePhase(phase.localId)}
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                              حذف فاز
-                            </button>
-                          </div>
-
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <label className="form-control md:col-span-2">
-                              <span className="label label-text font-semibold">عنوان فاز</span>
-                              <input
-                                className="input input-bordered bg-base-100"
-                                value={phase.title}
-                                onChange={(event) => updatePhase(phase.localId, 'title', event.target.value)}
-                                required
-                              />
-                            </label>
-
-                            <ShamsiDateInput
-                              label="شروع فاز"
-                              value={phase.startDate}
-                              onChange={(value) => updatePhase(phase.localId, 'startDate', value)}
-                              required
-                            />
-
-                            <ShamsiDateInput
-                              label="پایان فاز"
-                              value={phase.endDate}
-                              onChange={(value) => updatePhase(phase.localId, 'endDate', value)}
-                              required
-                            />
-
-                            <label className="form-control">
-                              <span className="label label-text font-semibold">درآمد پیش‌بینی‌شده فاز</span>
-                              <input
-                                type="number"
-                                min="0"
-                                className="input input-bordered bg-base-100"
-                                value={phase.potentialRevenueAmount}
-                                onChange={(event) => updatePhase(phase.localId, 'potentialRevenueAmount', event.target.value)}
-                                placeholder="مثلاً 50000000"
-                              />
-                            </label>
-
-                            <label className="form-control">
-                              <span className="label label-text font-semibold">هزینه پیش‌بینی‌شده فاز</span>
-                              <input
-                                type="number"
-                                min="0"
-                                className="input input-bordered bg-base-100"
-                                value={phase.potentialCostAmount}
-                                onChange={(event) => updatePhase(phase.localId, 'potentialCostAmount', event.target.value)}
-                                placeholder="مثلاً 20000000"
-                              />
-                            </label>
-
-                            <label className="form-control md:col-span-2">
-                              <span className="label label-text font-semibold">توضیحات فاز</span>
-                              <textarea
-                                className="textarea textarea-bordered min-h-20 bg-base-100"
-                                value={phase.description}
-                                onChange={(event) => updatePhase(phase.localId, 'description', event.target.value)}
-                                placeholder="کارهای اصلی این فاز"
-                              />
-                            </label>
-
-                            <div className="md:col-span-2">
-                              <PhaseUserSearchPicker
-                                users={users}
-                                selectedUserIds={phase.assignedUserIds}
-                                onToggle={(userId) => togglePhaseUser(phase.localId, userId)}
-                                loading={loadingUsers}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </details>
-                    );
-                  })}
-                </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-primary/30 bg-primary/[0.035] px-5 py-10 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
+                      <CalendarDaysIcon className="h-8 w-8" />
+                    </div>
+                    <h3 className="mt-4 text-base font-black text-base-content">هنوز فازی تعریف نشده است</h3>
+                    <p className="mx-auto mt-2 max-w-lg text-sm leading-7 text-base-content/50">
+                      پروژه باید حداقل یک فاز اجرایی داشته باشد. زمان‌بندی، اعضای مسئول و پیش‌بینی مالی را داخل فرم فاز ثبت کنید.
+                    </p>
+                    <button type="button" className="btn btn-primary btn-sm mt-5 gap-2" onClick={addPhase}>
+                      <PlusIcon className="h-4 w-4" />
+                      تعریف اولین فاز
+                    </button>
+                  </div>
+                )}
               </SectionCard>
             </div>
 
@@ -567,6 +623,18 @@ const DashboardProjectDefinitionPage = () => {
             </aside>
           </form>
         )}
+        <PhaseFormModal
+          open={phaseModalOpen}
+          phase={editingPhase}
+          users={users}
+          loadingUsers={loadingUsers}
+          mode={phaseModalMode}
+          onClose={() => {
+            setPhaseModalOpen(false);
+            setEditingPhase(null);
+          }}
+          onSave={savePhase}
+        />
       </div>
     </DashboardLayout>
   );

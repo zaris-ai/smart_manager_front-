@@ -19,3 +19,10 @@ export {
 } from './LoadingSkeleton';
 
 export * from './DashboardUi';
+
+export {
+  default as UserAvatar,
+  DICEBEAR_AVATAR_STYLES,
+  getDiceBearAvatarUrl,
+  getRandomDiceBearStyle,
+} from './UserAvatar';

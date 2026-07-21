@@ -3,6 +3,7 @@ import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
 import persianFa from 'react-date-object/locales/persian_fa';
 
+
 export type ShamsiDateInputProps = {
   value?: string | Date | null;
   onChange: (gregorianDateKey: string) => void;
@@ -78,10 +79,11 @@ const ShamsiDateInput = ({
         onChange={(selectedDate) => onChange(toGregorianDateKey(selectedDate))}
         calendar={persian}
         locale={persianFa}
-        calendarPosition="bottom-right"
+        calendarPosition="top-right"
+        zIndex={9999}
         format="YYYY/MM/DD"
         inputClass={inputClasses}
-        containerClassName="w-full"
+        containerClassName="w-full relative"
         placeholder={placeholder}
         disabled={disabled}
         editable={false}

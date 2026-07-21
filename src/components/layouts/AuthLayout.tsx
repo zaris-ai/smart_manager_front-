@@ -1,6 +1,4 @@
-import { ReactNode } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
+import { UserAvatar } from '@/components/common';
 import { ROUTES } from '@/config/constants';
 import {
   ArrowRightIcon,
@@ -8,6 +6,8 @@ import {
   ClipboardDocumentCheckIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import Link from 'next/link';
+import { ReactNode } from 'react';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -80,18 +80,11 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
           </div>
         </section>
 
-        <section className="relative hidden overflow-hidden lg:block">
-          <div className="absolute inset-0">
-            <Image
-              src="/Image/side_image.png"
-              alt="تصویر ورود به سامانه"
-              fill
-              className="object-cover"
-              priority
-            />
+        <section className="relative hidden overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-secondary lg:block">
+          <div className="absolute inset-0 opacity-20">
+            <div className="absolute -right-24 top-20 h-80 w-80 rounded-full border-[48px] border-white/30" />
+            <div className="absolute -bottom-20 -left-20 h-96 w-96 rounded-full border-[56px] border-white/20" />
           </div>
-
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/95 via-primary/75 to-secondary/80" />
 
           <div className="relative z-10 flex min-h-screen flex-col justify-center p-14 text-primary-content">
             <div className="max-w-xl">
@@ -99,8 +92,20 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
                 سیستم مدیریت کار، پروژه و گزارش روزانه
               </div>
 
+              <div className="mb-9 flex items-center" dir="ltr" aria-label="اعضای تیم">
+                {Array.from({ length: 7 }).map((_, index) => (
+                  <UserAvatar
+                    key={index}
+                    size={index === 3 ? 'lg' : 'md'}
+                    name={`عضو تیم ${index + 1}`}
+                    className="-ml-3 border-4 border-white/80 shadow-xl first:ml-0"
+                    eager
+                  />
+                ))}
+              </div>
+
               <h2 className="text-5xl font-extrabold leading-tight drop-shadow-lg">
-                مدیریت شفاف پروژه‌ها با گزارش‌های قابل پیگیری
+                مدیریت شفاف پروژه‌ها با یک تیم قابل مشاهده
               </h2>
 
               <p className="mt-6 text-lg leading-9 text-white/85">

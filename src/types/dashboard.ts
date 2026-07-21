@@ -1,3 +1,5 @@
+import type { UserSummary } from './project';
+
 export type DashboardScope = 'manager' | 'employee';
 
 export type DashboardCountItem = {
@@ -32,6 +34,33 @@ export type DashboardRecentActivity = {
     files?: DashboardRecentActivityFile[];
 };
 
+
+export type DashboardExpertActivityRow = {
+    expertId: string;
+    expert: UserSummary;
+    rank: number;
+    previousRank: number | null;
+    rankChange: number | null;
+    activityScore: number;
+    totalEntries: number;
+    totalDurationMinutes: number;
+    activeDayCount: number;
+    projectCount: number;
+    deliverableRatePercent: number;
+    averageProgressPercent: number;
+    lastWorkDate?: string | null;
+    lastActivityAt?: string | null;
+    inactiveDays: number | null;
+};
+
+export type DashboardExpertActivity = {
+    period: { dateFrom: string; dateTo: string; dayCount: number };
+    mostActive: DashboardExpertActivityRow | null;
+    leastActive: DashboardExpertActivityRow | null;
+    activeExpertCount: number;
+    inactiveExpertCount: number;
+};
+
 export type DashboardSummary = {
     generatedAt: string;
     scope: DashboardScope;
@@ -55,6 +84,7 @@ export type DashboardSummary = {
     taskStatus: DashboardCountItem[];
     workTrend: DashboardTrendItem[];
     recentActivities: DashboardRecentActivity[];
+    expertActivity: DashboardExpertActivity | null;
 };
 
 export type DashboardApiResponse = {

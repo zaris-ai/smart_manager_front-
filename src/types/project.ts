@@ -60,6 +60,13 @@ export type UserSummary = {
   roleLabel?: string;
   isActive?: boolean;
   telegramChatId?: string;
+  profile?: {
+    jobTitle?: string;
+    domain?: string;
+    specialtyChapter?: string;
+    responsibilityScope?: string;
+    bio?: string;
+  };
 };
 
 export type UserReference = string | UserSummary;

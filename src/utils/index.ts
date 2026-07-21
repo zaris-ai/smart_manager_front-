@@ -13,3 +13,5 @@ export {
   transformPagination,
 } from "./transformers";
 export { getLogoutUrl, isProductionEnvironment } from "./getLogoutUrl";
+
+export * from './role-access';

@@ -304,9 +304,12 @@ const TelegramManagementPage = () => {
             title="خروجی ثبت‌شده از ربات"
             value={
               (overview?.counts.telegramTasks || 0) +
-              (overview?.counts.telegramReports || 0)
+              (overview?.counts.telegramReports || 0) +
+              (overview?.counts.telegramWorkLogs || 0) +
+              (overview?.counts.telegramLeaveRequests || 0) +
+              (overview?.counts.telegramFeedback || 0)
             }
-            description={`${overview?.counts.telegramTasks || 0} وظیفه، ${overview?.counts.telegramReports || 0} گزارش، ${overview?.counts.telegramFiles || 0} فایل`}
+            description={`${overview?.counts.telegramTasks || 0} وظیفه، ${overview?.counts.telegramReports || 0} گزارش پروژه، ${overview?.counts.telegramWorkLogs || 0} گزارش کار، ${overview?.counts.telegramLeaveRequests || 0} مرخصی و ${overview?.counts.telegramFeedback || 0} پیام سازمانی`}
             icon={ClipboardDocumentCheckIcon}
             tone="primary"
           />

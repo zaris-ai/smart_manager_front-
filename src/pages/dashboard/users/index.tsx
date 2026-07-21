@@ -18,6 +18,7 @@ import {
   DashboardPageHeader,
   FilterBar,
   SectionCard,
+  UserAvatar,
 } from '@/components/common';
 import { DashboardLayout } from '@/components/layouts';
 import { RoleHelpPanel, UserFormModal } from '@/components/users';
@@ -59,19 +60,6 @@ const roleBadgeClass = (role?: string): string => {
     default:
       return 'badge-neutral';
   }
-};
-
-const getInitials = (name: string): string => {
-  const cleanedName = name.trim();
-
-  if (!cleanedName) return '؟';
-
-  return cleanedName
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('');
 };
 
 const DashboardUsersPage = () => {
@@ -337,11 +325,14 @@ const DashboardUsersPage = () => {
                     <tr key={userId} className="hover">
                       <td>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-sm font-black text-primary">
-                            {getInitials(displayName)}
-                          </div>
+                          <UserAvatar
+                            userId={userId}
+                            name={displayName}
+                            size="sm"
+                            className="rounded-2xl border-primary/15"
+                          />
                           <div className="min-w-0">
-                            <div className="font-black text-base-content">
+                            <div className="break-words font-black text-base-content">
                               {displayName}
                             </div>
                             <div className="truncate text-xs text-base-content/50">

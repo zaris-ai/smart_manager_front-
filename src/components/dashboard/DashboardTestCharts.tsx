@@ -9,6 +9,9 @@ import {
   DocumentTextIcon,
   ExclamationTriangleIcon,
   FolderIcon,
+  FireIcon,
+  TrophyIcon,
+  ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline';
 import {
   CartesianGrid,
@@ -24,9 +27,23 @@ import {
   DashboardRecentActivity,
   DashboardSummary,
 } from '@/types/dashboard';
+import { getEntityLabel } from '@/types/expert-work-log';
+import { UserAvatar } from '@/components/common';
 
 const formatNumber = (value: number): string => {
   return new Intl.NumberFormat('fa-IR').format(value || 0);
+};
+
+
+const formatDuration = (minutes: number): string => {
+  const value = Number(minutes || 0);
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
+
+  if (!value) return '۰ دقیقه';
+  if (hours && rest) return `${formatNumber(hours)} ساعت و ${formatNumber(rest)} دقیقه`;
+  if (hours) return `${formatNumber(hours)} ساعت`;
+  return `${formatNumber(rest)} دقیقه`;
 };
 
 const formatDateTime = (value?: string): string => {
@@ -280,6 +297,105 @@ export default function DashboardTestCharts() {
           );
         })}
       </section>
+
+
+
+      {summary.expertActivity ? (
+        <section className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <TrophyIcon className="h-6 w-6 text-primary" />
+                <h2 className="text-lg font-black text-base-content">فعال‌ترین و کم‌فعال‌ترین کارشناسان</h2>
+              </div>
+              <p className="mt-1 text-xs leading-6 text-base-content/60">
+                مقایسه براساس امتیاز فعالیت ثبت‌شده در {formatNumber(summary.expertActivity.period.dayCount)} روز اخیر؛ برای تصمیم مدیریتی، تخصیص پروژه و کیفیت خروجی نیز باید بررسی شود.
+              </p>
+            </div>
+            <Link href="/dashboard/expert-leaderboard" className="btn btn-primary btn-sm rounded-xl">
+              مشاهده جدول رقابتی
+            </Link>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {summary.expertActivity.mostActive ? (
+              <Link
+                href={`/dashboard/expert-work-reports/${summary.expertActivity.mostActive.expertId}`}
+                className="group rounded-3xl border border-success/30 bg-success/10 p-5 transition hover:-translate-y-1 hover:shadow-lg"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <UserAvatar
+                      userId={summary.expertActivity.mostActive.expertId}
+                      name={getEntityLabel(summary.expertActivity.mostActive.expert)}
+                      size="lg"
+                      className="border-4 border-success/25"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-success">فعال‌ترین کارشناس</div>
+                      <h3 className="mt-2 break-words text-xl font-black group-hover:text-success">
+                        {getEntityLabel(summary.expertActivity.mostActive.expert)}
+                      </h3>
+                      <p className="mt-1 break-words text-xs text-base-content/55">
+                        {summary.expertActivity.mostActive.expert?.profile?.jobTitle || 'کارشناس پروژه'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 rounded-2xl bg-success p-3 text-success-content">
+                    <FireIcon className="h-8 w-8" />
+                  </div>
+                </div>
+                <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+                  <div><div className="text-xs text-base-content/45">امتیاز</div><strong className="mt-1 block text-2xl text-success">{formatNumber(summary.expertActivity.mostActive.activityScore)}</strong></div>
+                  <div><div className="text-xs text-base-content/45">زمان کار</div><strong className="mt-1 block">{formatDuration(summary.expertActivity.mostActive.totalDurationMinutes)}</strong></div>
+                  <div><div className="text-xs text-base-content/45">روز فعال</div><strong className="mt-1 block">{formatNumber(summary.expertActivity.mostActive.activeDayCount)}</strong></div>
+                </div>
+              </Link>
+            ) : null}
+
+            {summary.expertActivity.leastActive ? (
+              <Link
+                href={`/dashboard/expert-work-reports/${summary.expertActivity.leastActive.expertId}`}
+                className="group rounded-3xl border border-warning/35 bg-warning/10 p-5 transition hover:-translate-y-1 hover:shadow-lg"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <UserAvatar
+                      userId={summary.expertActivity.leastActive.expertId}
+                      name={getEntityLabel(summary.expertActivity.leastActive.expert)}
+                      size="lg"
+                      className="border-4 border-warning/25"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-warning">کم‌فعال‌ترین کارشناس</div>
+                      <h3 className="mt-2 break-words text-xl font-black group-hover:text-warning">
+                        {getEntityLabel(summary.expertActivity.leastActive.expert)}
+                      </h3>
+                      <p className="mt-1 break-words text-xs text-base-content/55">
+                        {summary.expertActivity.leastActive.expert?.profile?.jobTitle || 'کارشناس پروژه'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 rounded-2xl bg-warning p-3 text-warning-content">
+                    <ArrowTrendingDownIcon className="h-8 w-8" />
+                  </div>
+                </div>
+                <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+                  <div><div className="text-xs text-base-content/45">امتیاز</div><strong className="mt-1 block text-2xl text-warning">{formatNumber(summary.expertActivity.leastActive.activityScore)}</strong></div>
+                  <div><div className="text-xs text-base-content/45">زمان کار</div><strong className="mt-1 block">{formatDuration(summary.expertActivity.leastActive.totalDurationMinutes)}</strong></div>
+                  <div><div className="text-xs text-base-content/45">از آخرین فعالیت</div><strong className="mt-1 block">{summary.expertActivity.leastActive.inactiveDays === null ? 'بدون سابقه' : `${formatNumber(summary.expertActivity.leastActive.inactiveDays)} روز`}</strong></div>
+                </div>
+              </Link>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 text-xs text-base-content/55">
+            <span className="badge badge-success badge-outline p-3">{formatNumber(summary.expertActivity.activeExpertCount)} کارشناس فعال</span>
+            <span className="badge badge-warning badge-outline p-3">{formatNumber(summary.expertActivity.inactiveExpertCount)} کارشناس بدون فعالیت</span>
+          </div>
+        </section>
+      ) : null}
+
 
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">

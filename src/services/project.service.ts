@@ -516,12 +516,25 @@ export const projectService = {
     payload: Partial<ProjectRequestPayload>,
   ): Promise<Project> {
     try {
-      const response = await apiClient.patch(
+      await apiClient.patch(
         `/projects/${projectId}`,
         buildProjectRequestPayload(payload),
       );
 
-      return unwrapData<Project>(response.data);
+      // Always read the canonical saved document after a mutation. Project phases
+      // live in a separate backend collection, so returning only the Project
+      // document can make the UI appear unchanged or temporarily drop phase data.
+      const refreshedResponse = await apiClient.get(`/projects/${projectId}`, {
+        params: {
+          _updatedAt: Date.now(),
+        },
+        headers: {
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+      });
+
+      return unwrapData<Project>(refreshedResponse.data);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در ویرایش پروژه'));
     }

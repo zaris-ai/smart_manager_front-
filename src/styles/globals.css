@@ -135,13 +135,13 @@ select[dir='ltr'],
 }
 
 .form-control .label,
-.form-control > .label {
+.form-control>.label {
   justify-content: flex-start;
   padding: 0 0.15rem;
 }
 
 .form-control .label-text,
-.form-control > .label-text,
+.form-control>.label-text,
 .label .label-text {
   color: color-mix(in oklab, var(--app-base-content) 72%, transparent);
   font-size: 0.82rem;
@@ -355,6 +355,7 @@ select option:checked {
   outline: 2px solid var(--app-primary);
   outline-offset: 2px;
 }
+
 /* ============================================
    Avid dashboard dark-mode refinement layer
    Keeps legacy Tailwind gray/white surfaces aligned with DaisyUI themes.
@@ -547,9 +548,17 @@ html.dark .avid-tab-button-active {
   background: color-mix(in oklab, var(--app-base-content) 10%, transparent);
 }
 
-.avid-health-meter > span {
+.avid-health-meter>span {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--color-success, #16a34a), var(--color-primary, #2563eb));
+}
+
+/* Keep all Shamsi date picker calendars above modal sections */
+.rmdp-container,
+.rmdp-calendar,
+.rmdp-wrapper,
+.rmdp-shadow {
+  z-index: 999 !important;
 }

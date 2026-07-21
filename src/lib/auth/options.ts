@@ -45,6 +45,15 @@ type BackendLoginResponse = {
   };
 };
 
+
+const LOCAL_NEXTAUTH_SECRET =
+  'avid-localhost-nextauth-secret-v1-do-not-use-in-production';
+
+const resolvedNextAuthSecret =
+  process.env.NEXTAUTH_SECRET ||
+  process.env.AUTH_SECRET ||
+  LOCAL_NEXTAUTH_SECRET;
+
 const backendBaseUrl =
   process.env.API_BASE_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -150,7 +159,7 @@ const refreshAccessToken = async (token: any) => {
 };
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: resolvedNextAuthSecret,
 
   session: {
     strategy: 'jwt',

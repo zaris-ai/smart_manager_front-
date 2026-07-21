@@ -1,4 +1,4 @@
-import { ThemeToggle } from '@/components/common';
+import { ThemeToggle, UserAvatar } from '@/components/common';
 import { Bars3Icon } from '@heroicons/react/24/outline';
 import { useSession } from 'next-auth/react';
 
@@ -13,17 +13,6 @@ interface DashboardHeaderProps {
   onLogout: () => void;
 }
 
-function getUserInitials(name?: string | null, username?: string | null): string {
-  const source = name?.trim() || username?.trim() || 'کاربر';
-  const parts = source.split(' ').filter(Boolean);
-
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
-
-  return source.slice(0, 2).toUpperCase();
-}
-
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   setSidebarOpen,
   onLogout,
@@ -33,7 +22,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const userName = session?.user?.name || session?.user?.username || 'کاربر';
   const username = session?.user?.username || '';
   const email = session?.user?.email || '';
-  const initials = getUserInitials(userName, username);
 
   return (
     <header
@@ -65,11 +53,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           <ThemeToggle variant="dropdown" />
 
           <div className="hidden items-center gap-3 md:flex">
-            <div className="avatar placeholder">
-              <div className="w-10 rounded-2xl bg-primary text-primary-content shadow-sm">
-                <span className="text-sm font-bold">{initials}</span>
-              </div>
-            </div>
+            <UserAvatar
+              userId={session?.user?.id}
+              name={userName}
+              size="sm"
+              eager
+              className="rounded-2xl border-primary/20"
+            />
 
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold text-base-content">

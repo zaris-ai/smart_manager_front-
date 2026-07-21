@@ -21,16 +21,17 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 }) => {
   const router = useRouter();
 
-  const isActive = (href?: string) => {
+  const isActive = (href?: string, match: 'exact' | 'prefix' = 'prefix') => {
     if (!href) return false;
 
     const [basePath] = href.split('?');
+    const currentPath = router.asPath.split(/[?#]/)[0];
 
-    if (basePath === '/dashboard') {
-      return router.pathname === '/dashboard';
+    if (basePath === '/dashboard' || match === 'exact') {
+      return currentPath === basePath;
     }
 
-    return router.pathname === basePath || router.pathname.startsWith(`${basePath}/`);
+    return currentPath === basePath || currentPath.startsWith(`${basePath}/`);
   };
 
   return (
@@ -80,7 +81,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
       <SidebarMenu
         menuItems={menuItems}
-        isActive={isActive}
+        isActive={(href, match) => isActive(href, match)}
         collapsedSidebar={collapsedSidebar}
       />
 

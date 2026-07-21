@@ -5,6 +5,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getUserDisplayName } from '@/types/project';
+import { UserAvatar } from '@/components/common';
 import type { AppUser } from '@/types/user';
 
 const getUserId = (user: AppUser): string => user.id || user._id || '';
@@ -87,11 +88,16 @@ const PhaseUserSearchPicker = ({
                 <button
                   key={userId}
                   type="button"
-                  className="badge badge-primary badge-outline gap-1 py-3 text-[11px] font-black"
+                  className="inline-flex items-center gap-2 rounded-full border border-primary/35 bg-primary/5 py-1 pl-2 pr-1 text-[11px] font-black text-primary"
                   onClick={() => onToggle(userId)}
                   title="حذف از فاز"
                 >
-                  {getUserDisplayName(user as any)}
+                  <UserAvatar
+                    userId={userId}
+                    name={getUserDisplayName(user as any)}
+                    size="xs"
+                  />
+                  <span className="break-words">{getUserDisplayName(user as any)}</span>
                   <XMarkIcon className="h-3.5 w-3.5" />
                 </button>
               );
@@ -145,12 +151,20 @@ const PhaseUserSearchPicker = ({
                     : 'border-base-300 bg-base-200/40 text-base-content/75 hover:border-primary/40 hover:bg-primary/5'
                 }`}
               >
-                <span className="min-w-0">
-                  <span className="block truncate font-black">
-                    {getUserDisplayName(user as any)}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11px] font-bold opacity-60">
-                    {user.roleLabel || user.role || user.email || user.username || 'بدون نقش'}
+                <span className="flex min-w-0 items-center gap-3">
+                  <UserAvatar
+                    userId={userId}
+                    name={getUserDisplayName(user as any)}
+                    size="sm"
+                    className={checked ? 'border-primary ring-2 ring-primary/20' : ''}
+                  />
+                  <span className="min-w-0">
+                    <span className="block break-words font-black">
+                      {getUserDisplayName(user as any)}
+                    </span>
+                    <span className="mt-0.5 block break-words text-[11px] font-bold opacity-60">
+                      {user.roleLabel || user.role || user.email || user.username || 'بدون نقش'}
+                    </span>
                   </span>
                 </span>
                 <input
