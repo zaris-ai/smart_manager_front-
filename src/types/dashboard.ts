@@ -61,6 +61,30 @@ export type DashboardExpertActivity = {
     inactiveExpertCount: number;
 };
 
+export type DashboardExpertLeave = {
+    id: string;
+    expertId: string;
+    expert: UserSummary;
+    leaveType: string;
+    leaveTypeLabel: string;
+    durationType: string;
+    durationTypeLabel: string;
+    startsAt: string;
+    endsAt: string;
+    startTime: string;
+    endTime: string;
+    halfDayPeriod?: string | null;
+    reason: string;
+    handoverNotes: string;
+    isActiveNow: boolean;
+};
+
+export type DashboardExpertLeaves = {
+    todayCount: number;
+    activeNowCount: number;
+    today: DashboardExpertLeave[];
+};
+
 export type DashboardSummary = {
     generatedAt: string;
     scope: DashboardScope;
@@ -85,6 +109,7 @@ export type DashboardSummary = {
     workTrend: DashboardTrendItem[];
     recentActivities: DashboardRecentActivity[];
     expertActivity: DashboardExpertActivity | null;
+    expertLeaves: DashboardExpertLeaves | null;
 };
 
 export type DashboardApiResponse = {

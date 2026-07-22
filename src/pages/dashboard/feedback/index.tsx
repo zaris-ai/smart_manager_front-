@@ -186,6 +186,9 @@ const FeedbackPage = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const canReview = Boolean(options?.permissions.canReview || summary.permissions.canReview);
+  const canSubmit = Boolean(options?.permissions.canSubmit) && role === 'expert';
+  const isManagerView =
+    role === 'manager' || role === 'board' || (canReview && role !== 'expert');
 
   const loadList = useCallback(async () => {
     const result = tab === 'inbox' ? await feedbackService.listInbox(filters) : await feedbackService.listMine(filters);
@@ -216,8 +219,16 @@ const FeedbackPage = () => {
   }, [refreshAll]);
 
   useEffect(() => {
-    if (!canReview && tab === 'inbox') setTab('mine');
-  }, [canReview, tab]);
+    if (isManagerView && tab !== 'inbox') {
+      setTab('inbox');
+      setFilters({ page: 1, limit: 12 });
+      setDraftFilters({});
+      setLoading(true);
+      return;
+    }
+
+    if (!isManagerView && !canReview && tab === 'inbox') setTab('mine');
+  }, [canReview, isManagerView, tab]);
 
   const updatePayload = <K extends keyof FeedbackPayload>(key: K, value: FeedbackPayload[K]) =>
     setPayload((current) => ({ ...current, [key]: value }));
@@ -299,10 +310,10 @@ const FeedbackPage = () => {
     setLoading(true);
   };
 
-  const title = role === 'expert' ? 'انتقادات و پیشنهادهای من' : 'انتقادات و پیشنهادها';
-  const description = role === 'expert'
+  const title = isManagerView ? 'بررسی انتقادات و پیشنهادها' : 'انتقادات و پیشنهادهای من';
+  const description = !isManagerView
     ? 'نظر، انتقاد و راهکار خود را شفاف ثبت کنید و پاسخ مدیریت را در همین صفحه دنبال کنید.'
-    : 'پیام خود را ثبت کنید و بازخوردهای کارشناسان و مدیران را در کارتابل مدیریت پاسخ دهید.';
+    : 'پیام‌های کارشناسان را بررسی کنید، وضعیت رسیدگی و پاسخ مدیریت را ثبت کنید.';
 
   return (
     <DashboardLayout>
@@ -319,20 +330,28 @@ const FeedbackPage = () => {
           }
         />
 
-        <div className={`grid gap-4 sm:grid-cols-2 ${canReview ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
-          <AdminStatCard title="کل پیام‌های من" value={summary.mine.total.toLocaleString('fa-IR')} description="انتقاد و پیشنهاد ثبت‌شده" icon={ChatBubbleLeftRightIcon} tone="primary" />
-          <AdminStatCard title="جدید" value={summary.mine.new.toLocaleString('fa-IR')} description="هنوز بررسی نشده" icon={SparklesIcon} tone="info" />
-          <AdminStatCard title="در حال بررسی" value={summary.mine.underReview.toLocaleString('fa-IR')} description="در کارتابل مدیریت" icon={ClockIcon} tone="warning" />
-          <AdminStatCard title="پاسخ گرفته" value={summary.mine.responded.toLocaleString('fa-IR')} description="دارای پاسخ مدیریت" icon={CheckCircleIcon} tone="success" />
-          {canReview ? <AdminStatCard title="نیازمند بررسی" value={summary.inbox.total.toLocaleString('fa-IR')} description={`${summary.inbox.suggestions.toLocaleString('fa-IR')} پیشنهاد، ${summary.inbox.criticisms.toLocaleString('fa-IR')} انتقاد`} icon={UserGroupIcon} tone="error" /> : null}
-        </div>
+        {isManagerView ? (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <AdminStatCard title="نیازمند بررسی" value={summary.inbox.total.toLocaleString('fa-IR')} description="پیام‌های جدید یا در حال بررسی" icon={UserGroupIcon} tone="error" />
+            <AdminStatCard title="پیشنهادها" value={summary.inbox.suggestions.toLocaleString('fa-IR')} description="نیازمند پاسخ مدیریت" icon={LightBulbIcon} tone="primary" />
+            <AdminStatCard title="انتقادها" value={summary.inbox.criticisms.toLocaleString('fa-IR')} description="نیازمند رسیدگی" icon={MegaphoneIcon} tone="warning" />
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <AdminStatCard title="کل پیام‌های من" value={summary.mine.total.toLocaleString('fa-IR')} description="انتقاد و پیشنهاد ثبت‌شده" icon={ChatBubbleLeftRightIcon} tone="primary" />
+            <AdminStatCard title="جدید" value={summary.mine.new.toLocaleString('fa-IR')} description="هنوز بررسی نشده" icon={SparklesIcon} tone="info" />
+            <AdminStatCard title="در حال بررسی" value={summary.mine.underReview.toLocaleString('fa-IR')} description="در کارتابل مدیریت" icon={ClockIcon} tone="warning" />
+            <AdminStatCard title="پاسخ گرفته" value={summary.mine.responded.toLocaleString('fa-IR')} description="دارای پاسخ مدیریت" icon={CheckCircleIcon} tone="success" />
+          </div>
+        )}
 
-        <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <SectionCard
-            title={editing ? 'ویرایش پیام' : 'ثبت انتقاد یا پیشنهاد'}
-            description="موضوع را دقیق، محترمانه و همراه با راهکار عملی ثبت کنید."
-            className="h-fit xl:sticky xl:top-4"
-          >
+        <div className={canSubmit ? 'grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]' : 'grid gap-6'}>
+          {canSubmit ? (
+            <SectionCard
+              title={editing ? 'ویرایش پیام' : 'ثبت انتقاد یا پیشنهاد'}
+              description="موضوع را دقیق، محترمانه و همراه با راهکار عملی ثبت کنید."
+              className="h-fit xl:sticky xl:top-4"
+            >
             <form className="space-y-4" onSubmit={submit}>
               <div className="grid grid-cols-2 gap-3">
                 {(options?.types || []).map((option) => (
@@ -386,10 +405,11 @@ const FeedbackPage = () => {
                 </button>
               </div>
             </form>
-          </SectionCard>
+            </SectionCard>
+          ) : null}
 
           <div className="space-y-4">
-            {canReview ? (
+            {canReview && !isManagerView ? (
               <div className="avid-glass-surface flex flex-wrap gap-2 rounded-3xl p-2">
                 <button type="button" className={`btn flex-1 rounded-2xl sm:flex-none ${tab === 'mine' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => changeTab('mine')}><ChatBubbleLeftRightIcon className="h-5 w-5" />پیام‌های من</button>
                 <button type="button" className={`btn flex-1 rounded-2xl sm:flex-none ${tab === 'inbox' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => changeTab('inbox')}><ShieldCheckIcon className="h-5 w-5" />کارتابل مدیریت{summary.inbox.total ? <span className="badge badge-error badge-sm">{summary.inbox.total.toLocaleString('fa-IR')}</span> : null}</button>
@@ -427,8 +447,8 @@ const FeedbackPage = () => {
             </FilterBar>
 
             <SectionCard
-              title={tab === 'inbox' ? 'پیام‌های نیازمند بررسی' : 'سوابق پیام‌های من'}
-              description={tab === 'inbox' ? 'برای هر پیام وضعیت بررسی و پاسخ شفاف ثبت کنید.' : 'پیام جدید را می‌توانید تا قبل از شروع بررسی ویرایش یا پس بگیرید.'}
+              title={isManagerView || tab === 'inbox' ? 'پیام‌های نیازمند بررسی' : 'سوابق پیام‌های من'}
+              description={isManagerView || tab === 'inbox' ? 'برای هر پیام وضعیت بررسی و پاسخ شفاف ثبت کنید.' : 'پیام جدید را می‌توانید تا قبل از شروع بررسی ویرایش یا پس بگیرید.'}
               actions={<SoftBadge className="bg-primary/10 text-primary">{pagination.total.toLocaleString('fa-IR')} پیام</SoftBadge>}
             >
               {loading ? (

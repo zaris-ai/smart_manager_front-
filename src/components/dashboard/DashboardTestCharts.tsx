@@ -12,6 +12,7 @@ import {
   FireIcon,
   TrophyIcon,
   ArrowTrendingDownIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import {
   CartesianGrid,
@@ -24,6 +25,7 @@ import {
 } from 'recharts';
 import { dashboardService } from '@/services/dashboard.service';
 import {
+  DashboardExpertLeave,
   DashboardRecentActivity,
   DashboardSummary,
 } from '@/types/dashboard';
@@ -59,6 +61,18 @@ const formatDateTime = (value?: string): string => {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+};
+
+const formatLeaveWindow = (leave: DashboardExpertLeave): string => {
+  if (leave.durationType === 'hourly') {
+    return `${leave.startTime || '—'} تا ${leave.endTime || '—'}`;
+  }
+
+  if (leave.durationType === 'half_day') {
+    return leave.halfDayPeriod === 'afternoon' ? 'نیم‌روز بعدازظهر' : 'نیم‌روز صبح';
+  }
+
+  return leave.durationTypeLabel || 'روز کامل';
 };
 
 const getActivityIcon = (type: DashboardRecentActivity['type']) => {
@@ -297,6 +311,97 @@ export default function DashboardTestCharts() {
           );
         })}
       </section>
+
+      {summary.expertLeaves ? (
+        <section className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <CalendarDaysIcon className="h-6 w-6 text-warning" />
+                <h2 className="text-lg font-black text-base-content">
+                  کارشناسان در مرخصی امروز
+                </h2>
+              </div>
+              <p className="mt-1 text-xs leading-6 text-base-content/60">
+                مرخصی‌های تأییدشده امروز؛ موارد فعال در همین لحظه با نشان «هم‌اکنون» مشخص شده‌اند.
+              </p>
+            </div>
+            <Link href="/dashboard/leave-requests" className="btn btn-outline btn-sm rounded-xl">
+              <UserGroupIcon className="h-5 w-5" />
+              کارتابل مرخصی
+            </Link>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <span className="badge badge-warning badge-outline p-3">
+              {formatNumber(summary.expertLeaves.activeNowCount)} نفر هم‌اکنون
+            </span>
+            <span className="badge badge-ghost p-3">
+              {formatNumber(summary.expertLeaves.todayCount)} مرخصی تأییدشده امروز
+            </span>
+          </div>
+
+          {summary.expertLeaves.today.length ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              {summary.expertLeaves.today.map((leave) => (
+                <article
+                  key={leave.id}
+                  className={`rounded-3xl border p-4 ${
+                    leave.isActiveNow
+                      ? 'border-warning/40 bg-warning/10'
+                      : 'border-base-300 bg-base-200/45'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <UserAvatar
+                      userId={leave.expertId}
+                      name={getEntityLabel(leave.expert)}
+                      size="md"
+                      className={leave.isActiveNow ? 'border-4 border-warning/25' : ''}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate font-black text-base-content">
+                          {getEntityLabel(leave.expert)}
+                        </h3>
+                        {leave.isActiveNow ? (
+                          <span className="badge badge-warning badge-sm">هم‌اکنون</span>
+                        ) : (
+                          <span className="badge badge-ghost badge-sm">امروز</span>
+                        )}
+                      </div>
+                      <p className="mt-1 truncate text-xs text-base-content/50">
+                        {leave.expert?.profile?.jobTitle || 'کارشناس پروژه'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-2xl bg-base-100/75 p-3">
+                      <div className="text-base-content/45">نوع مرخصی</div>
+                      <div className="mt-1 font-black">{leave.leaveTypeLabel}</div>
+                    </div>
+                    <div className="rounded-2xl bg-base-100/75 p-3">
+                      <div className="text-base-content/45">بازه امروز</div>
+                      <div className="mt-1 font-black">{formatLeaveWindow(leave)}</div>
+                    </div>
+                  </div>
+
+                  {leave.handoverNotes ? (
+                    <p className="mt-3 line-clamp-2 text-xs leading-6 text-base-content/60">
+                      تحویل کار: {leave.handoverNotes}
+                    </p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-base-300 p-7 text-center text-sm text-base-content/55">
+              امروز هیچ مرخصی تأییدشده‌ای برای کارشناسان ثبت نشده است.
+            </div>
+          )}
+        </section>
+      ) : null}
 
 
 

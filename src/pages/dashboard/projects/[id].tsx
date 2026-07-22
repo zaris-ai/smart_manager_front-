@@ -9,8 +9,10 @@ import {
   ProjectRole,
   projectService,
 } from '@/services/project.service';
+import { expertWorkLogService } from '@/services/expert-work-log.service';
 import { userService } from '@/services/user.service';
 import {
+  ExpertProjectCompletion,
   getFileId,
   getNoteId,
   getPhaseId,
@@ -30,8 +32,10 @@ import {
   ProjectTask,
   projectTaskStatusLabels,
   ProjectTaskStatus,
+  ProjectWorkHistoryItem,
 } from '@/types/project';
-import { AppUser } from '@/types/user';
+import type { ExpertWorkLog } from '@/types/expert-work-log';
+import { AppUser, normalizeUserRole } from '@/types/user';
 import { withAuth } from '@/utils';
 import {
   ArrowLeftIcon,
@@ -107,6 +111,13 @@ type ProjectWithMembers = Project & {
   members?: ProjectMemberReference[];
 };
 
+type ProjectWorkEntryKind = ProjectWorkHistoryItem['kind'];
+
+type ProjectWorkEntry = Omit<ProjectWorkHistoryItem, 'id'> & {
+  id?: string;
+  key: string;
+};
+
 const priorityOptions: ProjectPriority[] = ['low', 'medium', 'high', 'critical'];
 
 const fileCategoryOptions = Object.keys(
@@ -120,17 +131,61 @@ type ProjectDetailTab =
   | 'members'
   | 'tasks'
   | 'reports'
+  | 'expert_activity'
+  | 'expert_completions'
   | 'files'
   | 'charts';
 
-const projectDetailTabs: { key: ProjectDetailTab; label: string; hint: string; icon: ElementType }[] = [
-  { key: 'summary', label: 'خلاصه مدیریتی', hint: 'وضعیت فوری پروژه', icon: ChartBarIcon },
-  { key: 'phases', label: 'فازها', hint: 'زمان و مالی ساده', icon: FlagIcon },
-  { key: 'members', label: 'اعضا', hint: 'نقش و مسئولیت', icon: UserGroupIcon },
-  { key: 'tasks', label: 'وظایف', hint: 'کارهای باز و تایم‌لاین', icon: CheckCircleIcon },
-  { key: 'reports', label: 'گزارش کار', hint: 'ثبت و مرور کارها', icon: DocumentTextIcon },
-  { key: 'files', label: 'فایل‌ها', hint: 'پیوست‌های پروژه', icon: PaperClipIcon },
-  { key: 'charts', label: 'نمودارها', hint: 'تحلیل RTL پروژه', icon: ChartBarIcon },
+type ProjectDetailAudience = 'general' | 'manager' | 'expert';
+
+type ProjectDetailTabConfig = {
+  key: ProjectDetailTab;
+  label: string;
+  hint: string;
+  icon: ElementType;
+  audience: ProjectDetailAudience;
+};
+
+const projectDetailTabs: ProjectDetailTabConfig[] = [
+  { key: 'summary', label: 'نمای کلی پروژه', hint: 'وضعیت و اطلاعات اصلی', icon: ChartBarIcon, audience: 'general' },
+  { key: 'phases', label: 'فازها', hint: 'زمان‌بندی و مالی ساده', icon: FlagIcon, audience: 'general' },
+  { key: 'members', label: 'اعضای پروژه', hint: 'نقش و مسئولیت', icon: UserGroupIcon, audience: 'general' },
+  { key: 'files', label: 'فایل‌های پروژه', hint: 'پیوست‌ها و مستندات', icon: PaperClipIcon, audience: 'general' },
+  { key: 'charts', label: 'نمودارهای پروژه', hint: 'تحلیل و روندها', icon: ChartBarIcon, audience: 'general' },
+  { key: 'tasks', label: 'وظایف مدیریتی', hint: 'تعریف، پیگیری و بستن وظایف', icon: CheckCircleIcon, audience: 'manager' },
+  { key: 'reports', label: 'گزارش‌های مدیران', hint: 'کارهای ثبت‌شده توسط مدیران', icon: DocumentTextIcon, audience: 'manager' },
+  { key: 'expert_completions', label: 'بررسی تکمیل کارشناسان', hint: 'تأیید یا رد اعلام تکمیل', icon: CheckCircleIcon, audience: 'manager' },
+  { key: 'expert_activity', label: 'فعالیت کارشناسان', hint: 'ثبت‌های پنل و تلگرام کارشناسان', icon: UserGroupIcon, audience: 'expert' },
+];
+
+const projectDetailTabGroups: Array<{
+  audience: ProjectDetailAudience;
+  title: string;
+  description: string;
+  badgeClass: string;
+  panelClass: string;
+}> = [
+  {
+    audience: 'general',
+    title: 'اطلاعات مشترک پروژه',
+    description: 'اطلاعات پایه‌ای که مدیران و کارشناسان برای درک پروژه نیاز دارند.',
+    badgeClass: 'badge-neutral',
+    panelClass: 'border-base-300 bg-base-100',
+  },
+  {
+    audience: 'manager',
+    title: 'فضای کاری مدیران',
+    description: 'تعریف وظیفه، گزارش مدیریتی و بررسی خروجی کارشناسان.',
+    badgeClass: 'badge-primary',
+    panelClass: 'border-primary/25 bg-primary/5',
+  },
+  {
+    audience: 'expert',
+    title: 'فضای کاری کارشناسان',
+    description: 'فعالیت‌ها، خروجی‌ها و ثبت‌های انجام‌شده در پنل یا تلگرام.',
+    badgeClass: 'badge-info',
+    panelClass: 'border-info/25 bg-info/5',
+  },
 ];
 
 const createEmptyTaskForm = (): TaskFormState => ({
@@ -538,18 +593,87 @@ const getPhaseStatusLabel = (phase: ProjectPhase): string => {
   return 'در جریان';
 };
 
+const getReferenceTitle = (value: unknown): string => {
+  if (!value || typeof value === 'string') return '';
+
+  const reference = value as { title?: string };
+  return reference.title || '';
+};
+
+const normalizeProjectWorkSource = (
+  source?: string | null,
+): 'panel' | 'telegram_bot' => {
+  return source === 'telegram_bot' ? 'telegram_bot' : 'panel';
+};
+
+const projectWorkKindLabels: Record<ProjectWorkEntryKind, string> = {
+  project_note: 'گزارش ثبت‌شده در پنل',
+  expert_work_log: 'گزارش کار کارشناس',
+  expert_completion: 'اعلام تکمیل کارشناس',
+  completed_task: 'وظیفه تکمیل‌شده',
+};
+
+const getProjectWorkKindClass = (kind: ProjectWorkEntryKind): string => {
+  if (kind === 'completed_task') return 'badge-success';
+  if (kind === 'expert_completion') return 'badge-primary';
+  if (kind === 'expert_work_log') return 'badge-info';
+
+  return 'badge-neutral';
+};
+
+const expertCompletionStatusLabels: Record<
+  ExpertProjectCompletion['status'],
+  string
+> = {
+  pending: 'در انتظار تأیید',
+  approved: 'تأییدشده',
+  rejected: 'ردشده',
+  cancelled: 'لغوشده',
+};
+
+const getExpertCompletionStatusClass = (
+  status: ExpertProjectCompletion['status'],
+): string => {
+  if (status === 'approved') return 'badge-success';
+  if (status === 'rejected') return 'badge-error';
+  if (status === 'cancelled') return 'badge-ghost';
+
+  return 'badge-warning';
+};
+
+const formatCompletionDuration = (minutes?: number | null): string => {
+  if (!minutes || minutes < 1) return 'ثبت نشده';
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (!hours) return `${formatNumber(remainingMinutes)} دقیقه`;
+  if (!remainingMinutes) return `${formatNumber(hours)} ساعت`;
+
+  return `${formatNumber(hours)} ساعت و ${formatNumber(remainingMinutes)} دقیقه`;
+};
+
 const DashboardProjectDetailsPage = () => {
   const router = useRouter();
   const { data: session } = useSession();
 
   const projectId = typeof router.query.id === 'string' ? router.query.id : '';
   const currentUserId = session?.user?.id || '';
-  const currentRole = String(session?.user?.role || '').toLowerCase();
-  const canManageProject = currentRole === 'manager' || currentRole === 'admin';
+  const currentRole = normalizeUserRole(String(session?.user?.role || ''));
+  const canManageProject = currentRole === 'manager';
+  const canViewManagerWorkspace =
+    currentRole === 'manager' || currentRole === 'board';
+  const canViewExpertWorkspace =
+    currentRole === 'manager' || currentRole === 'board' || currentRole === 'expert';
+  const canViewProjectWorkHistory = canViewManagerWorkspace;
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [notes, setNotes] = useState<ProjectProgressNote[]>([]);
+  const [expertCompletions, setExpertCompletions] = useState<ExpertProjectCompletion[]>([]);
+  const [expertWorkLogs, setExpertWorkLogs] = useState<ExpertWorkLog[]>([]);
+  const [projectWorkHistory, setProjectWorkHistory] = useState<ProjectWorkEntry[]>([]);
+  const [projectWorkHistoryError, setProjectWorkHistoryError] = useState('');
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [managerUsers, setManagerUsers] = useState<AppUser[]>([]);
   const [projectRoles, setProjectRoles] = useState<ProjectRole[]>([]);
@@ -644,9 +768,11 @@ const DashboardProjectDetailsPage = () => {
     );
   }, [projectPhases]);
 
-  const completedTasksCount = useMemo(() => {
-    return tasks.filter((task) => task.status === 'done').length;
+  const completedTasks = useMemo(() => {
+    return tasks.filter((task) => task.status === 'done');
   }, [tasks]);
+
+  const completedTasksCount = completedTasks.length;
 
   const blockedTasksCount = useMemo(() => {
     return tasks.filter((task) => task.status === 'blocked').length;
@@ -851,6 +977,204 @@ const DashboardProjectDetailsPage = () => {
       .filter((item) => item.count > 0);
   }, [files, notes, tasks]);
 
+  const expertCompletionSummary = useMemo(() => {
+    return expertCompletions.reduce(
+      (summary, completion) => {
+        summary.total += 1;
+        summary[completion.status] += 1;
+        return summary;
+      },
+      {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        cancelled: 0,
+      },
+    );
+  }, [expertCompletions]);
+
+  const projectWorkEntries = useMemo<ProjectWorkEntry[]>(() => {
+    const entries: ProjectWorkEntry[] = [...projectWorkHistory];
+
+    notes.forEach((note) => {
+      const noteId = getNoteId(note);
+
+      entries.push({
+        id: noteId,
+        key: `project-note-${noteId}`,
+        kind: 'project_note',
+        source: normalizeProjectWorkSource(note.source),
+        occurredAt: note.createdAt,
+        createdAt: note.createdAt,
+        title: 'گزارش کار پروژه',
+        description: note.note,
+        actorLabel: getUserDisplayName(note.authorId),
+        actorIds: [getReferenceId(note.authorId)].filter(Boolean),
+        registeredByLabel: note.registeredById
+          ? getUserDisplayName(note.registeredById)
+          : undefined,
+        progressPercent: note.progressPercent,
+        files: note.files || [],
+      });
+    });
+
+    expertWorkLogs.forEach((workLog) => {
+      const workLogId = workLog.id || workLog._id || workLog.createdAt;
+
+      entries.push({
+        id: workLogId,
+        key: `expert-work-log-${workLogId}`,
+        kind: 'expert_work_log',
+        source: normalizeProjectWorkSource(workLog.source),
+        occurredAt: workLog.workDate || workLog.createdAt,
+        createdAt: workLog.createdAt,
+        title: workLog.title,
+        description: workLog.description,
+        actorLabel: getUserDisplayName(workLog.expertId),
+        actorIds: [getReferenceId(workLog.expertId)].filter(Boolean),
+        phaseLabel: getReferenceTitle(workLog.phaseId),
+        taskLabel: getReferenceTitle(workLog.taskId),
+        durationMinutes: workLog.durationMinutes,
+        progressPercent: workLog.progressPercent,
+        deliverables: workLog.deliverables,
+        blockers: workLog.blockers,
+        nextSteps: workLog.nextSteps,
+      });
+    });
+
+    expertCompletions.forEach((completion) => {
+      const completionId = completion.id || completion._id || completion.createdAt;
+
+      entries.push({
+        id: completionId,
+        key: `expert-completion-${completionId}`,
+        kind: 'expert_completion',
+        source: normalizeProjectWorkSource(completion.source),
+        occurredAt: completion.completionDate || completion.createdAt,
+        createdAt: completion.createdAt,
+        title: completion.title,
+        description: completion.summary,
+        actorLabel: getUserDisplayName(completion.expertId),
+        actorIds: [getReferenceId(completion.expertId)].filter(Boolean),
+        durationMinutes: completion.durationMinutes,
+        deliverables: completion.deliverables,
+        status: completion.status,
+        statusLabel:
+          completion.statusLabel || expertCompletionStatusLabels[completion.status],
+      });
+    });
+
+    completedTasks.forEach((task) => {
+      const taskId = getTaskId(task);
+      const assigneeNames = (task.assignedUserIds || [])
+        .map((user) => getUserDisplayName(user))
+        .filter(Boolean);
+
+      entries.push({
+        id: taskId,
+        key: `completed-task-${taskId}`,
+        kind: 'completed_task',
+        source: normalizeProjectWorkSource(task.source),
+        occurredAt: task.completedAt || task.updatedAt || task.createdAt,
+        createdAt: task.createdAt,
+        title: task.title,
+        description: task.description || 'برای این وظیفه توضیحی ثبت نشده است.',
+        actorLabel: assigneeNames.length
+          ? assigneeNames.join('، ')
+          : 'بدون مسئول مشخص',
+        actorIds: (task.assignedUserIds || [])
+          .map((user) => getReferenceId(user))
+          .filter(Boolean),
+        taskLabel: task.title,
+        status: 'done',
+        statusLabel: task.statusLabel || projectTaskStatusLabels.done,
+        files: task.files || [],
+      });
+    });
+
+    const uniqueEntries = Array.from(
+      new Map(
+        entries.map((entry) => [
+          `${entry.kind}:${entry.id || entry.key}`,
+          entry,
+        ]),
+      ).values(),
+    );
+
+    return uniqueEntries.sort((left, right) => {
+      const leftTime = new Date(left.occurredAt || left.createdAt).getTime();
+      const rightTime = new Date(right.occurredAt || right.createdAt).getTime();
+
+      return rightTime - leftTime;
+    });
+  }, [completedTasks, expertCompletions, expertWorkLogs, notes, projectWorkHistory]);
+
+  const expertTaskActivityEntries = useMemo(() => {
+    return projectWorkEntries.filter((entry) =>
+      ['expert_work_log', 'expert_completion', 'completed_task'].includes(
+        entry.kind,
+      ),
+    );
+  }, [projectWorkEntries]);
+
+  const visibleExpertTaskActivityEntries = useMemo(() => {
+    if (currentRole !== 'expert') return expertTaskActivityEntries;
+
+    return expertTaskActivityEntries.filter((entry) =>
+      (entry.actorIds || []).includes(currentUserId),
+    );
+  }, [currentRole, currentUserId, expertTaskActivityEntries]);
+
+  const managerReportEntries = useMemo(() => {
+    return projectWorkEntries.filter((entry) => entry.kind === 'project_note');
+  }, [projectWorkEntries]);
+
+  const managerReportSummary = useMemo(() => {
+    return managerReportEntries.reduce(
+      (summary, entry) => {
+        summary.total += 1;
+        summary[entry.source] += 1;
+        return summary;
+      },
+      { total: 0, panel: 0, telegram_bot: 0 },
+    );
+  }, [managerReportEntries]);
+
+  const showProjectWorkHistory =
+    canViewProjectWorkHistory ||
+    projectWorkEntries.length > 0 ||
+    Boolean(projectWorkHistoryError);
+
+  const recentExpertActivityEntries = useMemo(() => {
+    return visibleExpertTaskActivityEntries.slice(0, 4);
+  }, [visibleExpertTaskActivityEntries]);
+
+  const visibleProjectDetailTabs = useMemo(() => {
+    return projectDetailTabs.filter((tab) => {
+      if (tab.audience === 'manager') return canViewManagerWorkspace;
+      if (tab.audience === 'expert') return canViewExpertWorkspace;
+      return true;
+    });
+  }, [canViewExpertWorkspace, canViewManagerWorkspace]);
+
+  const visibleProjectDetailTabGroups = useMemo(() => {
+    return projectDetailTabGroups
+      .map((group) => ({
+        ...group,
+        tabs: visibleProjectDetailTabs.filter(
+          (tab) => tab.audience === group.audience,
+        ),
+      }))
+      .filter((group) => group.tabs.length > 0);
+  }, [visibleProjectDetailTabs]);
+
+  useEffect(() => {
+    if (!visibleProjectDetailTabs.some((tab) => tab.key === activeProjectTab)) {
+      setActiveProjectTab('summary');
+    }
+  }, [activeProjectTab, visibleProjectDetailTabs]);
+
   const projectTabBadges = useMemo<Record<ProjectDetailTab, string>>(() => {
     const allProjectFilesCount = files.length + tasks.reduce((sum, task) => sum + Number(task.files?.length || task.attachmentCount || 0), 0) + notes.reduce((sum, note) => sum + Number(note.files?.length || 0), 0);
 
@@ -858,16 +1182,18 @@ const DashboardProjectDetailsPage = () => {
       summary: projectHealthSnapshot.label,
       phases: formatNumber(projectPhases.length),
       members: formatNumber(projectMembers.length),
-      tasks: formatNumber(openTasks.length),
-      reports: formatNumber(notes.length),
+      tasks: `${formatNumber(openTasks.length)} باز · ${formatNumber(completedTasksCount)} تکمیل`,
+      reports: formatNumber(managerReportSummary.total),
+      expert_activity: formatNumber(visibleExpertTaskActivityEntries.length),
+      expert_completions: formatNumber(expertCompletionSummary.total),
       files: formatNumber(allProjectFilesCount),
       charts: formatNumber(projectTaskStatusChartData.length + projectPhaseDurationChartData.length + projectProgressTrendChartData.length),
     };
-  }, [files.length, notes, openTasks.length, projectHealthSnapshot.label, projectMembers.length, projectPhases.length, projectPhaseDurationChartData.length, projectProgressTrendChartData.length, projectTaskStatusChartData.length, tasks]);
+  }, [completedTasksCount, expertCompletionSummary.total, files.length, managerReportSummary.total, openTasks.length, projectHealthSnapshot.label, projectMembers.length, projectPhases.length, projectPhaseDurationChartData.length, projectProgressTrendChartData.length, projectTaskStatusChartData.length, tasks, visibleExpertTaskActivityEntries.length]);
 
   const activeProjectTabConfig = useMemo(() => {
-    return projectDetailTabs.find((tab) => tab.key === activeProjectTab) || projectDetailTabs[0];
-  }, [activeProjectTab]);
+    return visibleProjectDetailTabs.find((tab) => tab.key === activeProjectTab) || visibleProjectDetailTabs[0] || projectDetailTabs[0];
+  }, [activeProjectTab, visibleProjectDetailTabs]);
 
 
   const activeProjectRoles = useMemo(() => {
@@ -884,6 +1210,7 @@ const DashboardProjectDetailsPage = () => {
     try {
       setLoading(true);
       setError('');
+      setProjectWorkHistoryError('');
 
       const [
         projectResponse,
@@ -892,6 +1219,9 @@ const DashboardProjectDetailsPage = () => {
         filesResponse,
         managersResponse,
         projectRolesResponse,
+        expertCompletionsResponse,
+        expertWorkLogsResponse,
+        projectWorkHistoryResponse,
       ] = await Promise.all([
         projectService.getProject(projectId),
         projectService.listTasks(projectId),
@@ -899,6 +1229,39 @@ const DashboardProjectDetailsPage = () => {
         projectService.listFiles(projectId, { standaloneOnly: true }),
         userService.listUsers({ role: 'manager', isActive: true, limit: 100 }),
         projectService.listProjectRoles(false),
+        canViewManagerWorkspace
+          ? projectService.listExpertProjectCompletions(projectId).catch(() => [])
+          : Promise.resolve([]),
+        currentRole === 'expert'
+          ? expertWorkLogService
+              .list({
+                projectId,
+                expertId: currentUserId,
+                page: 1,
+                limit: 500,
+              })
+              .then((result) => result.items)
+              .catch(() => [])
+          : canViewManagerWorkspace
+            ? projectService.listProjectExpertWorkLogs(projectId).catch(() => [])
+            : Promise.resolve([]),
+        canViewManagerWorkspace
+          ? projectService.listProjectWorkHistory(projectId).catch((historyError) => {
+              setProjectWorkHistoryError(
+                historyError instanceof Error
+                  ? historyError.message
+                  : 'خطا در دریافت سوابق کار پروژه',
+              );
+
+              return {
+                items: [],
+                summary: { total: 0, panel: 0, telegram: 0, expertEntries: 0 },
+              };
+            })
+          : Promise.resolve({
+              items: [],
+              summary: { total: 0, panel: 0, telegram: 0, expertEntries: 0 },
+            }),
       ]);
 
       setProject(projectResponse);
@@ -907,6 +1270,14 @@ const DashboardProjectDetailsPage = () => {
       setFiles(filesResponse || []);
       setManagerUsers(managersResponse || []);
       setProjectRoles(projectRolesResponse || []);
+      setExpertCompletions(expertCompletionsResponse || []);
+      setExpertWorkLogs(expertWorkLogsResponse || []);
+      setProjectWorkHistory(
+        (projectWorkHistoryResponse?.items || []).map((item) => ({
+          ...item,
+          key: `${item.kind}-${item.id}`,
+        })),
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'خطا در دریافت اطلاعات پروژه',
@@ -920,7 +1291,7 @@ const DashboardProjectDetailsPage = () => {
     if (!router.isReady) return;
 
     loadProjectWorkspace();
-  }, [router.isReady, projectId]);
+  }, [router.isReady, projectId, canViewManagerWorkspace, currentRole, currentUserId]);
 
   const projectManagerOptions = useMemo(() => {
     if (managerUsers.length) return managerUsers;
@@ -1640,44 +2011,106 @@ const DashboardProjectDetailsPage = () => {
               </div>
             </div>
 
-            <div className="avid-glass-surface rounded-3xl p-2">
-              <div className="mb-2 flex flex-col gap-2 px-2 pt-2 md:flex-row md:items-center md:justify-between">
+            <div className="avid-glass-surface rounded-3xl p-4">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-xs font-black text-primary">فضای کاری پروژه</p>
-                  <h2 className="text-base font-black text-base-content">{activeProjectTabConfig.label}</h2>
+                  <h2 className="mt-1 text-base font-black text-base-content">
+                    بخش فعال: {activeProjectTabConfig.label}
+                  </h2>
+                  <p className="mt-1 text-xs font-bold text-base-content/55">
+                    تب‌ها بر اساس مخاطب تفکیک شده‌اند تا عملیات مدیران با فعالیت کارشناسان مخلوط نشود.
+                  </p>
                 </div>
                 <span className="badge badge-primary badge-outline rounded-xl px-3 py-3 text-xs font-black">
-                  فقط همین بخش نمایش داده می‌شود
+                  {currentRole === 'expert'
+                    ? 'نمای کارشناس'
+                    : currentRole === 'board'
+                      ? 'نمای هیئت‌مدیره'
+                      : 'نمای مدیر'}
                 </span>
               </div>
 
-              <div role="tablist" className="avid-tab-strip" aria-label="بخش‌های جزئیات پروژه">
-                {projectDetailTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActiveTab = activeProjectTab === tab.key;
+              <div className="grid gap-3 xl:grid-cols-3">
+                {visibleProjectDetailTabGroups.map((group) => {
+                  const isExpertGroup = group.audience === 'expert';
+                  const groupTitle =
+                    isExpertGroup && currentRole === 'expert'
+                      ? 'فضای کاری من'
+                      : group.title;
 
                   return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      role="tab"
-                      className={`avid-tab-button ${isActiveTab ? 'avid-tab-button-active' : ''}`}
-                      aria-selected={isActiveTab}
-                      onClick={() => setActiveProjectTab(tab.key)}
+                    <section
+                      key={group.audience}
+                      className={`rounded-2xl border p-3 ${group.panelClass}`}
                     >
-                      <span className="flex items-center gap-3 text-right">
-                        <span className="avid-tab-icon shrink-0">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className="flex flex-col items-start gap-0.5">
-                          <span className="text-sm font-black">{tab.label}</span>
-                          <span className="max-w-36 truncate text-[10px] font-bold opacity-75">{tab.hint}</span>
-                        </span>
-                        <span className={`badge badge-sm rounded-lg border-0 ${isActiveTab ? 'bg-white/20 text-current' : 'bg-base-200 text-base-content/60'}`}>
-                          {projectTabBadges[tab.key]}
-                        </span>
-                      </span>
-                    </button>
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-black text-base-content">{groupTitle}</h3>
+                            <span className={`badge badge-sm ${group.badgeClass}`}>
+                              {group.audience === 'general'
+                                ? 'مشترک'
+                                : group.audience === 'manager'
+                                  ? 'مدیران'
+                                  : 'کارشناسان'}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] font-bold leading-5 text-base-content/55">
+                            {group.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div
+                        role="tablist"
+                        className="grid gap-2"
+                        aria-label={groupTitle}
+                      >
+                        {group.tabs.map((tab) => {
+                          const Icon = tab.icon;
+                          const isActiveTab = activeProjectTab === tab.key;
+                          const tabLabel =
+                            tab.key === 'expert_activity' && currentRole === 'expert'
+                              ? 'فعالیت‌های من'
+                              : tab.label;
+
+                          return (
+                            <button
+                              key={tab.key}
+                              type="button"
+                              role="tab"
+                              className={`avid-tab-button w-full justify-between ${
+                                isActiveTab ? 'avid-tab-button-active' : ''
+                              }`}
+                              aria-selected={isActiveTab}
+                              onClick={() => setActiveProjectTab(tab.key)}
+                            >
+                              <span className="flex min-w-0 items-center gap-3 text-right">
+                                <span className="avid-tab-icon shrink-0">
+                                  <Icon className="h-4 w-4" />
+                                </span>
+                                <span className="flex min-w-0 flex-col items-start gap-0.5">
+                                  <span className="text-sm font-black">{tabLabel}</span>
+                                  <span className="max-w-full truncate text-[10px] font-bold opacity-75">
+                                    {tab.hint}
+                                  </span>
+                                </span>
+                              </span>
+                              <span
+                                className={`badge badge-sm shrink-0 rounded-lg border-0 ${
+                                  isActiveTab
+                                    ? 'bg-white/20 text-current'
+                                    : 'bg-base-200 text-base-content/60'
+                                }`}
+                              >
+                                {projectTabBadges[tab.key]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
                   );
                 })}
               </div>
@@ -1693,47 +2126,49 @@ const DashboardProjectDetailsPage = () => {
                   </div>
                 </div>
 
-                <div className={`mt-4 rounded-3xl border p-4 ${managerNextAction.toneClass}`}>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-xs font-black opacity-75">پیشنهاد تصمیم مدیریتی</p>
-                      <h3 className="mt-1 text-base font-black">{managerNextAction.title}</h3>
-                      <p className="mt-1 text-sm font-bold leading-7 opacity-80">{managerNextAction.description}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-sm rounded-xl border-0 bg-base-100/75 text-base-content hover:bg-base-100"
-                      onClick={() => {
-                        if (projectStaffingPending && canManageProject) {
-                          router.push(`/dashboard/projects/${projectId}/edit`);
-                          return;
-                        }
+                {canViewManagerWorkspace ? (
+                  <div className={`mt-4 rounded-3xl border p-4 ${managerNextAction.toneClass}`}>
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-xs font-black opacity-75">پیشنهاد تصمیم مدیریتی</p>
+                        <h3 className="mt-1 text-base font-black">{managerNextAction.title}</h3>
+                        <p className="mt-1 text-sm font-bold leading-7 opacity-80">{managerNextAction.description}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm rounded-xl border-0 bg-base-100/75 text-base-content hover:bg-base-100"
+                        onClick={() => {
+                          if (projectStaffingPending && canManageProject) {
+                            router.push(`/dashboard/projects/${projectId}/edit`);
+                            return;
+                          }
 
-                        setActiveProjectTab(
-                          overdueTasksCount || blockedTasksCount
-                            ? 'tasks'
-                            : !projectPhases.length
-                              ? 'phases'
-                              : !notes.length
-                                ? 'reports'
-                                : 'summary',
-                        );
-                      }}
-                    >
-                      {projectStaffingPending && canManageProject
-                        ? 'تکمیل تخصیص‌ها'
-                        : 'رفتن به بخش مرتبط'}
-                    </button>
+                          setActiveProjectTab(
+                            overdueTasksCount || blockedTasksCount
+                              ? 'tasks'
+                              : !projectPhases.length
+                                ? 'phases'
+                                : !notes.length
+                                  ? 'reports'
+                                  : 'summary',
+                          );
+                        }}
+                      >
+                        {projectStaffingPending && canManageProject
+                          ? 'تکمیل تخصیص‌ها'
+                          : 'رفتن به بخش مرتبط'}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                   <div className="rounded-3xl border border-base-300 bg-base-200/50 p-5">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <h3 className="text-base font-black text-base-content">نمای یک‌نگاه مدیر</h3>
+                        <h3 className="text-base font-black text-base-content">نمای یک‌نگاه پروژه</h3>
                         <p className="mt-1 text-sm leading-7 text-base-content/60">
-                          این بخش فقط شاخص‌های تصمیم‌ساز پروژه را نشان می‌دهد؛ جزئیات در تب‌های بعدی قرار گرفته‌اند.
+                          این بخش وضعیت کلی پروژه را نشان می‌دهد؛ جزئیات مدیریتی و کارشناسی در فضاهای جداگانه قرار گرفته‌اند.
                         </p>
                       </div>
                       <div className="radial-progress bg-base-100 text-primary shadow-sm" style={{ '--value': taskCompletionRate, '--size': '5.5rem', '--thickness': '8px' } as any} role="progressbar">
@@ -1767,29 +2202,115 @@ const DashboardProjectDetailsPage = () => {
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-base-300 bg-base-200/50 p-5">
-                    <h3 className="text-base font-black text-base-content">جمع مالی ساده فازها</h3>
-                    <p className="mt-1 text-sm leading-7 text-base-content/60">
-                      این اعداد از مالی ساده فازها آمده و برای تصمیم سریع مدیر نمایش داده می‌شود.
-                    </p>
-                    <div className="mt-5 space-y-3">
-                      <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
-                        <span className="font-bold text-base-content/60">درآمد واقعی</span>
-                        <strong className="text-success">{formatAmount(phaseFinancialTotals.realizedRevenue)}</strong>
-                      </div>
-                      <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
-                        <span className="font-bold text-base-content/60">هزینه واقعی</span>
-                        <strong className="text-error">{formatAmount(phaseFinancialTotals.realizedCost)}</strong>
-                      </div>
-                      <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
-                        <span className="font-bold text-base-content/60">مانده واقعی</span>
-                        <strong className={(phaseFinancialTotals.realizedRevenue - phaseFinancialTotals.realizedCost) >= 0 ? 'text-success' : 'text-error'}>
-                          {formatAmount(phaseFinancialTotals.realizedRevenue - phaseFinancialTotals.realizedCost)}
-                        </strong>
+                  {canViewManagerWorkspace ? (
+                    <div className="rounded-3xl border border-base-300 bg-base-200/50 p-5">
+                      <h3 className="text-base font-black text-base-content">جمع مالی ساده فازها</h3>
+                      <p className="mt-1 text-sm leading-7 text-base-content/60">
+                        این اعداد از مالی ساده فازها آمده و فقط در فضای مدیران نمایش داده می‌شود.
+                      </p>
+                      <div className="mt-5 space-y-3">
+                        <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
+                          <span className="font-bold text-base-content/60">درآمد واقعی</span>
+                          <strong className="text-success">{formatAmount(phaseFinancialTotals.realizedRevenue)}</strong>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
+                          <span className="font-bold text-base-content/60">هزینه واقعی</span>
+                          <strong className="text-error">{formatAmount(phaseFinancialTotals.realizedCost)}</strong>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-base-100 px-4 py-3 text-sm shadow-sm">
+                          <span className="font-bold text-base-content/60">مانده واقعی</span>
+                          <strong className={(phaseFinancialTotals.realizedRevenue - phaseFinancialTotals.realizedCost) >= 0 ? 'text-success' : 'text-error'}>
+                            {formatAmount(phaseFinancialTotals.realizedRevenue - phaseFinancialTotals.realizedCost)}
+                          </strong>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-3xl border border-info/25 bg-info/5 p-5">
+                      <div className="flex items-center gap-2">
+                        <UserGroupIcon className="h-5 w-5 text-info" />
+                        <h3 className="text-base font-black text-base-content">فضای کاری کارشناس</h3>
+                      </div>
+                      <p className="mt-2 text-sm leading-7 text-base-content/60">
+                        فعالیت‌ها و خروجی‌های شما از عملیات مدیریتی پروژه جدا شده‌اند.
+                      </p>
+                      <div className="mt-5 rounded-2xl bg-base-100 p-4 shadow-sm">
+                        <div className="text-xs font-bold text-base-content/55">فعالیت‌های ثبت‌شده من</div>
+                        <div className="mt-1 text-3xl font-black text-info">
+                          {formatNumber(visibleExpertTaskActivityEntries.length)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-info btn-outline mt-4 w-full rounded-xl"
+                        onClick={() => setActiveProjectTab('expert_activity')}
+                      >
+                        مشاهده فعالیت‌های من
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {showProjectWorkHistory ? (
+                  <section className="mt-5 rounded-3xl border border-base-300 bg-base-200/40 p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="text-base font-black text-base-content">
+                          آخرین فعالیت‌های کارشناسان
+                        </h3>
+                        <p className="mt-1 text-sm leading-7 text-base-content/60">
+                          فعالیت‌های ثبت‌شده در پنل، تلگرام و وظایف تکمیل‌شده این پروژه.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline rounded-xl"
+                        onClick={() => setActiveProjectTab('expert_activity')}
+                      >
+                        مشاهده فضای کارشناسان
+                      </button>
+                    </div>
+
+                    {projectWorkHistoryError ? (
+                      <div className="alert alert-warning mt-4 text-sm">
+                        <ExclamationTriangleIcon className="h-5 w-5" />
+                        <span>{projectWorkHistoryError}</span>
+                      </div>
+                    ) : recentExpertActivityEntries.length ? (
+                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {recentExpertActivityEntries.map((entry) => (
+                          <article
+                            key={`summary-activity-${entry.key}`}
+                            className="rounded-2xl border border-base-300 bg-base-100 p-4"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-black text-base-content">{entry.title}</h4>
+                              <span className={`badge ${getProjectWorkKindClass(entry.kind)}`}>
+                                {projectWorkKindLabels[entry.kind]}
+                              </span>
+                              <span className="badge badge-outline">
+                                {entry.source === 'telegram_bot' ? 'تلگرام' : 'پنل'}
+                              </span>
+                            </div>
+                            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-7 text-base-content/70">
+                              {entry.description}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold text-base-content/55">
+                              {currentRole !== 'expert' ? (
+                                <span>کارشناس: {entry.actorLabel}</span>
+                              ) : null}
+                              <span>تاریخ: {formatDate(entry.occurredAt || entry.createdAt)}</span>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-2xl border border-dashed border-base-300 p-5 text-center text-sm text-base-content/60">
+                        هنوز فعالیتی برای این پروژه ثبت نشده است.
+                      </div>
+                    )}
+                  </section>
+                ) : null}
               </section>
             ) : null}
 
@@ -2275,22 +2796,21 @@ const DashboardProjectDetailsPage = () => {
                   <div className="mb-5">
                     <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
                       {editingTaskId
-                        ? 'ویرایش وظیفه مدیر'
-                        : 'تعریف وظیفه برای مدیران'}
+                        ? 'ویرایش وظیفه مدیریتی'
+                        : 'مدیریت وظایف پروژه'}
                     </h2>
 
                     <p className="mt-1 text-sm text-gray-500">
-                      وظایف می‌توانند از پنل یا بات تلگرام ثبت شوند. فایل‌های
-                      ارسال‌شده از تلگرام نیز به عنوان پیوست وظیفه نمایش داده
-                      می‌شوند. وظایف تکمیل‌شده در لیست فعال نمایش داده نمی‌شوند،
-                      اما در تایم‌لاین باقی می‌مانند.
+                      این بخش مخصوص تعریف، ویرایش، پیگیری و بستن وظایف توسط مدیران پروژه است.
+                      فعالیت‌ها و خروجی‌های کارشناسان در فضای مستقل کارشناسان نمایش داده می‌شود.
                     </p>
                   </div>
 
-                  <form
-                    onSubmit={handleSubmitTask}
-                    className="mb-6 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700"
-                  >
+                  {canManageProject ? (
+                    <form
+                      onSubmit={handleSubmitTask}
+                      className="mb-6 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700"
+                    >
                     <div className="grid gap-3 lg:grid-cols-2">
                       <input
                         className="input input-bordered"
@@ -2473,7 +2993,18 @@ const DashboardProjectDetailsPage = () => {
                             : 'ثبت وظیفه برای مدیر'}
                       </button>
                     </div>
-                  </form>
+                    </form>
+                  ) : (
+                    <div className="alert alert-info mb-6 items-start">
+                      <DocumentTextIcon className="h-5 w-5 shrink-0" />
+                      <div>
+                        <div className="font-black">نمای فقط‌خواندنی فضای مدیران</div>
+                        <p className="mt-1 text-sm leading-7">
+                          تعریف و ویرایش وظیفه فقط برای مدیر پروژه فعال است؛ شما می‌توانید وضعیت وظایف را مشاهده کنید.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-3">
                     {visibleTasks.length ? (
@@ -2584,6 +3115,61 @@ const DashboardProjectDetailsPage = () => {
                       </div>
                     )}
                   </div>
+
+                  {canViewManagerWorkspace ? (
+                    <section className="mt-8 border-t border-base-300 pt-6">
+                      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <h3 className="text-base font-black text-base-content">
+                            وظایف تکمیل‌شده
+                          </h3>
+                          <p className="mt-1 text-sm leading-7 text-base-content/60">
+                            وظایفی که وضعیت رسمی آن‌ها در پروژه «انجام‌شده» است.
+                          </p>
+                        </div>
+                        <span className="badge badge-success badge-outline rounded-xl px-3 py-3">
+                          {formatNumber(completedTasks.length)} وظیفه
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {completedTasks.length ? (
+                          completedTasks.map((task) => (
+                            <article
+                              key={`completed-${getTaskId(task)}`}
+                              className="rounded-2xl border border-success/25 bg-success/5 p-4"
+                            >
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="font-black text-base-content">{task.title}</h4>
+                                    <span className="badge badge-success">انجام‌شده</span>
+                                    <span className="badge badge-outline">
+                                      {projectPriorityLabels[task.priority] || task.priority}
+                                    </span>
+                                  </div>
+                                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/70">
+                                    {task.description || 'برای این وظیفه توضیحی ثبت نشده است.'}
+                                  </p>
+                                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-base-content/60">
+                                    <span>مسئول: {task.assignedUserIds?.length ? task.assignedUserIds.map((user) => getUserDisplayName(user)).join('، ') : 'بدون مسئول مشخص'}</span>
+                                    <span>موعد: {formatDate(task.dueDate)}</span>
+                                    <span>تاریخ تکمیل: {formatDate(task.completedAt || task.updatedAt)}</span>
+                                  </div>
+                                  {renderFiles(task.files, 'فایل‌های تحویل وظیفه')}
+                                </div>
+                              </div>
+                            </article>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-base-300 p-6 text-center text-sm text-base-content/60">
+                            هنوز وظیفه تکمیل‌شده‌ای برای این پروژه وجود ندارد.
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
                 </div>
 
                 <ProjectTimelineFlow
@@ -2594,17 +3180,158 @@ const DashboardProjectDetailsPage = () => {
                 />
               </div>
 
+              <div
+                id="project-expert-activity"
+                className={
+                  activeProjectTab === 'expert_activity'
+                    ? 'avid-glass-surface rounded-3xl p-5'
+                    : 'hidden'
+                }
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <UserGroupIcon className="h-5 w-5 text-info" />
+                      <h2 className="text-lg font-black text-base-content">
+                        {currentRole === 'expert'
+                          ? 'فعالیت‌ها و خروجی‌های من'
+                          : 'فعالیت‌ها و خروجی‌های کارشناسان'}
+                      </h2>
+                      <span className="badge badge-info badge-outline">فضای کارشناسان</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-7 text-base-content/60">
+                      {currentRole === 'expert'
+                        ? 'کارهایی که شما در پنل یا تلگرام ثبت کرده‌اید و وظایف رسمی تکمیل‌شده شما در این بخش نمایش داده می‌شود.'
+                        : 'کارهای ثبت‌شده کارشناسان در پنل یا تلگرام، اعلام‌های تکمیل و وظایف رسمی انجام‌شده در این بخش مستقل از عملیات مدیران نمایش داده می‌شود.'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="badge badge-info rounded-xl px-3 py-3 font-black">
+                      {formatNumber(visibleExpertTaskActivityEntries.length)} ثبت
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline rounded-xl"
+                      onClick={loadProjectWorkspace}
+                      disabled={loading}
+                    >
+                      <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                      به‌روزرسانی
+                    </button>
+                  </div>
+                </div>
+
+                {projectWorkHistoryError ? (
+                  <div className="alert alert-warning mt-5 text-sm">
+                    <ExclamationTriangleIcon className="h-5 w-5" />
+                    <span>{projectWorkHistoryError}</span>
+                  </div>
+                ) : null}
+
+                <div className="mt-6 space-y-3">
+                  {visibleExpertTaskActivityEntries.length ? (
+                    visibleExpertTaskActivityEntries.map((entry) => (
+                      <article
+                        key={`expert-activity-${entry.key}`}
+                        className="rounded-2xl border border-info/20 bg-info/5 p-4"
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-black text-base-content">{entry.title}</h3>
+                              <span className={`badge ${getProjectWorkKindClass(entry.kind)}`}>
+                                {projectWorkKindLabels[entry.kind]}
+                              </span>
+                              <span className="badge badge-outline">
+                                {entry.source === 'telegram_bot' ? 'ثبت تلگرام' : 'ثبت پنل'}
+                              </span>
+                              {entry.statusLabel ? (
+                                <span className="badge badge-success badge-outline">
+                                  {entry.statusLabel}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                              {entry.description}
+                            </p>
+
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-base-content/60">
+                              {currentRole !== 'expert' ? (
+                                <span>کارشناس: {entry.actorLabel}</span>
+                              ) : null}
+                              <span>تاریخ: {formatDate(entry.occurredAt || entry.createdAt)}</span>
+                              {entry.phaseLabel ? <span>فاز: {entry.phaseLabel}</span> : null}
+                              {entry.taskLabel ? <span>وظیفه: {entry.taskLabel}</span> : null}
+                              {entry.durationMinutes ? (
+                                <span>مدت: {formatCompletionDuration(entry.durationMinutes)}</span>
+                              ) : null}
+                              {entry.progressPercent !== null &&
+                              entry.progressPercent !== undefined ? (
+                                <span>پیشرفت: {formatNumber(entry.progressPercent)}٪</span>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                              {entry.deliverables ? (
+                                <div className="rounded-xl bg-success/5 p-3">
+                                  <div className="text-xs font-black text-success">خروجی‌ها</div>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                                    {entry.deliverables}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {entry.blockers ? (
+                                <div className="rounded-xl bg-error/5 p-3">
+                                  <div className="text-xs font-black text-error">موانع</div>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                                    {entry.blockers}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {entry.nextSteps ? (
+                                <div className="rounded-xl bg-primary/5 p-3">
+                                  <div className="text-xs font-black text-primary">گام بعدی</div>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                                    {entry.nextSteps}
+                                  </p>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {renderFiles(entry.files, 'فایل‌های مرتبط')}
+                          </div>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-info/30 bg-info/5 p-8 text-center text-sm leading-7 text-base-content/60">
+                      {currentRole === 'expert'
+                        ? 'هنوز فعالیتی برای شما در این پروژه ثبت نشده است.'
+                        : 'هنوز فعالیتی از کارشناسان برای این پروژه ثبت نشده است.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="space-y-6">
                 <div id="project-reports" className={activeProjectTab === 'reports' ? 'avid-glass-surface rounded-3xl p-5' : 'hidden'}>
                   <div className="mb-4 flex items-center gap-2">
                     <DocumentTextIcon className="h-5 w-5 text-primary" />
 
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                      ثبت کار انجام‌شده
-                    </h2>
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                        گزارش‌های ثبت‌شده مدیران
+                      </h2>
+                      <p className="mt-1 text-sm leading-7 text-base-content/55">
+                        این بخش فقط برای گزارش‌ها و ثبت‌های مدیریتی پروژه است. فعالیت کارشناسان در تب مستقل «فعالیت کارشناسان» نمایش داده می‌شود.
+                      </p>
+                    </div>
                   </div>
 
-                  <form onSubmit={handleCreateWorkLog} className="space-y-4">
+                  {canManageProject ? (
+                    <form onSubmit={handleCreateWorkLog} className="space-y-4">
                     <select
                       className="select select-bordered w-full"
                       value={workAuthorId}
@@ -2692,46 +3419,297 @@ const DashboardProjectDetailsPage = () => {
                     >
                       {savingWorkLog ? 'در حال ثبت...' : 'ثبت کار انجام‌شده'}
                     </button>
-                  </form>
-
-                  <div className="mt-6 space-y-3">
-                    {notes.slice(0, 5).map((note) => (
-                      <div
-                        key={getNoteId(note)}
-                        className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800"
-                      >
-                        <div className="space-y-1 text-xs text-gray-500">
-                          <div>
-                            {formatDate(note.createdAt)} · انجام‌دهنده:{' '}
-                            {getUserDisplayName(note.authorId)}
-                          </div>
-
-                          {note.registeredById &&
-                          getReferenceId(note.registeredById) !==
-                            getReferenceId(note.authorId) ? (
-                            <div>
-                              ثبت‌شده توسط:{' '}
-                              {getUserDisplayName(note.registeredById)}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                          {note.note}
-                        </div>
-
-                        {note.progressPercent !== null &&
-                        note.progressPercent !== undefined ? (
-                          <div className="mt-2 text-xs text-primary">
-                            پیشرفت: {note.progressPercent}%
-                          </div>
-                        ) : null}
-
-                        {renderFiles(note.files, 'فایل‌های پیوست گزارش')}
+                    </form>
+                  ) : (
+                    <div className="alert alert-info items-start">
+                      <DocumentTextIcon className="h-5 w-5 shrink-0" />
+                      <div>
+                        <div className="font-black">نمای فقط‌خواندنی گزارش‌های مدیران</div>
+                        <p className="mt-1 text-sm leading-7">
+                          ثبت گزارش مدیریتی فقط برای مدیر پروژه فعال است.
+                        </p>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  <section className="mt-8 border-t border-base-300 pt-6">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <h3 className="text-base font-black text-base-content">
+                          سوابق مدیریتی پروژه
+                        </h3>
+                        <p className="mt-1 text-sm leading-7 text-base-content/60">
+                          این فهرست فقط گزارش‌هایی را نمایش می‌دهد که توسط مدیران پروژه ثبت شده‌اند.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline rounded-xl"
+                        onClick={loadProjectWorkspace}
+                        disabled={loading}
+                      >
+                        <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                        به‌روزرسانی
+                      </button>
+                    </div>
+
+                    {projectWorkHistoryError ? (
+                      <div className="alert alert-warning mt-5 text-sm">
+                        <ExclamationTriangleIcon className="h-5 w-5" />
+                        <span>{projectWorkHistoryError}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <div className="stat rounded-2xl bg-base-200/60">
+                        <div className="stat-title text-xs font-bold">کل سوابق کار</div>
+                        <div className="stat-value text-2xl text-base-content">
+                          {formatNumber(managerReportSummary.total)}
+                        </div>
+                      </div>
+                      <div className="stat rounded-2xl bg-primary/10">
+                        <div className="stat-title text-xs font-bold">ثبت‌شده در پنل</div>
+                        <div className="stat-value text-2xl text-primary">
+                          {formatNumber(managerReportSummary.panel)}
+                        </div>
+                      </div>
+                      <div className="stat rounded-2xl bg-info/10">
+                        <div className="stat-title text-xs font-bold">ثبت‌شده در تلگرام</div>
+                        <div className="stat-value text-2xl text-info">
+                          {formatNumber(managerReportSummary.telegram_bot)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      {managerReportEntries.length ? (
+                        managerReportEntries.map((entry) => (
+                          <article
+                            key={entry.key}
+                            className="rounded-3xl border border-base-300 bg-base-100 p-5"
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-base font-black text-base-content">
+                                    {entry.title}
+                                  </h4>
+                                  <span className={`badge ${getProjectWorkKindClass(entry.kind)}`}>
+                                    {projectWorkKindLabels[entry.kind]}
+                                  </span>
+                                  <span className="badge badge-outline">
+                                    {entry.source === 'telegram_bot'
+                                      ? 'منبع: تلگرام'
+                                      : 'منبع: پنل'}
+                                  </span>
+                                  {entry.statusLabel ? (
+                                    <span
+                                      className={`badge ${
+                                        entry.kind === 'expert_completion' &&
+                                        entry.status &&
+                                        entry.status !== 'done'
+                                          ? getExpertCompletionStatusClass(
+                                              entry.status as ExpertProjectCompletion['status'],
+                                            )
+                                          : 'badge-success'
+                                      }`}
+                                    >
+                                      {entry.statusLabel}
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-base-content/60">
+                                  <span>انجام‌دهنده: {entry.actorLabel}</span>
+                                  <span>تاریخ کار: {formatDate(entry.occurredAt)}</span>
+                                  {entry.registeredByLabel &&
+                                  entry.registeredByLabel !== entry.actorLabel ? (
+                                    <span>ثبت‌کننده: {entry.registeredByLabel}</span>
+                                  ) : null}
+                                  {entry.durationMinutes ? (
+                                    <span>مدت: {formatCompletionDuration(entry.durationMinutes)}</span>
+                                  ) : null}
+                                  {entry.phaseLabel ? <span>فاز: {entry.phaseLabel}</span> : null}
+                                  {entry.taskLabel && entry.kind !== 'completed_task' ? (
+                                    <span>وظیفه: {entry.taskLabel}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              {entry.progressPercent !== null &&
+                              entry.progressPercent !== undefined ? (
+                                <div className="rounded-2xl bg-primary/10 px-4 py-3 text-center">
+                                  <div className="text-xs font-bold text-primary">پیشرفت ثبت‌شده</div>
+                                  <div className="mt-1 text-xl font-black text-primary">
+                                    {formatNumber(entry.progressPercent)}٪
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-base-content/80">
+                              {entry.description}
+                            </p>
+
+                            {entry.deliverables || entry.blockers || entry.nextSteps ? (
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                {entry.deliverables ? (
+                                  <div className="rounded-2xl bg-success/5 p-4">
+                                    <div className="text-xs font-black text-success">خروجی‌ها</div>
+                                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                                      {entry.deliverables}
+                                    </p>
+                                  </div>
+                                ) : null}
+                                {entry.blockers ? (
+                                  <div className="rounded-2xl bg-error/5 p-4">
+                                    <div className="text-xs font-black text-error">موانع</div>
+                                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                                      {entry.blockers}
+                                    </p>
+                                  </div>
+                                ) : null}
+                                {entry.nextSteps ? (
+                                  <div className="rounded-2xl bg-info/5 p-4">
+                                    <div className="text-xs font-black text-info">گام بعدی</div>
+                                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/75">
+                                      {entry.nextSteps}
+                                    </p>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            {renderFiles(entry.files, 'فایل‌های مرتبط با این کار')}
+                          </article>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-base-300 p-8 text-center text-sm leading-7 text-base-content/60">
+                          هنوز گزارش مدیریتی برای این پروژه ثبت نشده است.
+                        </div>
+                      )}
+                    </div>
+                  </section>
                 </div>
+
+                {canViewManagerWorkspace ? (
+                  <div
+                    id="project-expert-completions"
+                    className={
+                      activeProjectTab === 'expert_completions'
+                        ? 'avid-glass-surface rounded-3xl p-5'
+                        : 'hidden'
+                    }
+                  >
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircleIcon className="h-5 w-5 text-primary" />
+                          <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">
+                            کارهای تکمیل‌شده کارشناسان
+                          </h2>
+                        </div>
+                        <p className="mt-2 text-sm leading-7 text-gray-500">
+                          اعلام‌های تکمیل ثبت‌شده توسط کارشناسان، چه از پنل و چه از ربات تلگرام، همراه با وضعیت بررسی مدیر نمایش داده می‌شوند.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline rounded-xl"
+                        onClick={loadProjectWorkspace}
+                        disabled={loading}
+                      >
+                        <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                        به‌روزرسانی
+                      </button>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="stat rounded-2xl bg-base-200/60">
+                        <div className="stat-title text-xs font-bold">کل ثبت‌ها</div>
+                        <div className="stat-value text-2xl text-base-content">{formatNumber(expertCompletionSummary.total)}</div>
+                      </div>
+                      <div className="stat rounded-2xl bg-warning/10">
+                        <div className="stat-title text-xs font-bold">در انتظار بررسی</div>
+                        <div className="stat-value text-2xl text-warning">{formatNumber(expertCompletionSummary.pending)}</div>
+                      </div>
+                      <div className="stat rounded-2xl bg-success/10">
+                        <div className="stat-title text-xs font-bold">تأییدشده</div>
+                        <div className="stat-value text-2xl text-success">{formatNumber(expertCompletionSummary.approved)}</div>
+                      </div>
+                      <div className="stat rounded-2xl bg-error/10">
+                        <div className="stat-title text-xs font-bold">ردشده</div>
+                        <div className="stat-value text-2xl text-error">{formatNumber(expertCompletionSummary.rejected)}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      {expertCompletions.length ? (
+                        expertCompletions.map((completion) => (
+                          <article
+                            key={completion.id || completion._id}
+                            className={`rounded-3xl border p-5 ${
+                              completion.status === 'pending'
+                                ? 'border-warning/40 bg-warning/5'
+                                : 'border-base-300 bg-base-100'
+                            }`}
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="text-base font-black text-base-content">{completion.title}</h3>
+                                  <span className={`badge ${getExpertCompletionStatusClass(completion.status)}`}>
+                                    {completion.statusLabel || expertCompletionStatusLabels[completion.status]}
+                                  </span>
+                                  <span className="badge badge-outline">
+                                    {completion.source === 'telegram_bot' ? 'ثبت‌شده در تلگرام' : 'ثبت‌شده در پنل'}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-base-content/60">
+                                  <span>کارشناس: {getUserDisplayName(completion.expertId)}</span>
+                                  <span>تاریخ تکمیل: {formatDate(completion.completionDate)}</span>
+                                  <span>مدت کار: {formatCompletionDuration(completion.durationMinutes)}</span>
+                                  <span>تاریخ ثبت: {formatDate(completion.createdAt)}</span>
+                                </div>
+                              </div>
+
+                              {completion.reviewedAt ? (
+                                <div className="rounded-2xl bg-base-200 px-4 py-3 text-xs leading-6 text-base-content/70">
+                                  <div>بررسی: {formatDate(completion.reviewedAt)}</div>
+                                  <div>بررسی‌کننده: {getUserDisplayName(completion.reviewerId)}</div>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                              <div className="rounded-2xl bg-base-200/60 p-4">
+                                <div className="text-xs font-black text-primary">شرح کار انجام‌شده</div>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/80">{completion.summary}</p>
+                              </div>
+                              <div className="rounded-2xl bg-base-200/60 p-4">
+                                <div className="text-xs font-black text-primary">خروجی‌ها و تحویل‌دادنی‌ها</div>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/80">{completion.deliverables}</p>
+                              </div>
+                            </div>
+
+                            {completion.managerNote ? (
+                              <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                                <div className="text-xs font-black text-primary">نظر مدیر</div>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/80">{completion.managerNote}</p>
+                              </div>
+                            ) : null}
+                          </article>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-base-300 p-8 text-center text-sm leading-7 text-base-content/60">
+                          هنوز هیچ کار تکمیل‌شده‌ای از طرف کارشناسان برای این پروژه ثبت نشده است.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div id="project-files" className={activeProjectTab === 'files' ? 'avid-glass-surface rounded-3xl p-5' : 'hidden'}>
                   <div className="mb-4 flex items-center gap-2">

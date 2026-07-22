@@ -7,10 +7,7 @@ import {
   SectionCard,
   SoftBadge,
 } from '@/components/common/DashboardUi';
-import {
-  LeaveRequestFormModal,
-  LeaveReviewModal,
-} from '@/components/leave-requests';
+import { LeaveReviewModal } from '@/components/leave-requests';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
 import leaveRequestService from '@/services/leave-request.service';
 import type {
@@ -47,7 +44,7 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const EMPTY_SUMMARY: LeaveRequestSummary = {
@@ -126,13 +123,11 @@ const periodText = (request: LeaveRequest): string => {
 const LeaveRequestCard = ({
   request,
   reviewMode,
-  onEdit,
   onCancel,
   onReview,
 }: {
   request: LeaveRequest;
   reviewMode: boolean;
-  onEdit: (request: LeaveRequest) => void;
   onCancel: (request: LeaveRequest) => void;
   onReview: (request: LeaveRequest) => void;
 }) => {
@@ -183,10 +178,13 @@ const LeaveRequestCard = ({
             ) : null}
             {!reviewMode && request.status === 'pending' ? (
               <>
-                <button type="button" className="btn btn-outline btn-sm rounded-xl" onClick={() => onEdit(request)}>
+                <Link
+                  href={`/dashboard/leave-requests/${getLeaveEntityId(request)}/edit`}
+                  className="btn btn-outline btn-sm rounded-xl"
+                >
                   <PencilSquareIcon className="h-4 w-4" />
                   ویرایش
-                </button>
+                </Link>
                 <button type="button" className="btn btn-ghost btn-sm rounded-xl text-error" onClick={() => onCancel(request)}>
                   لغو
                 </button>
@@ -243,7 +241,7 @@ const LeaveRequestCard = ({
 };
 
 const LeaveRequestsPage = () => {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const role = getPanelRole(session?.user?.role);
   const [tab, setTab] = useState<TabKey>('mine');
   const [options, setOptions] = useState<LeaveRequestOptions | null>(null);
@@ -265,15 +263,38 @@ const LeaveRequestsPage = () => {
     limit: 12,
   });
   const [draftFilters, setDraftFilters] = useState(filters);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<LeaveRequest | null>(null);
   const [reviewing, setReviewing] = useState<LeaveRequest | null>(null);
+  const listRequestVersionRef = useRef(0);
 
-  const canReview = options?.permissions.canReview || summary.permissions.canReview;
+  const canReview = Boolean(options?.permissions.canReview || summary.permissions.canReview);
+  const canSubmit = Boolean(options?.permissions.canSubmit) && role === 'expert';
+  const isManagerView =
+    role === 'manager' || role === 'board' || (canReview && role !== 'expert');
+  const activeTab = useMemo<TabKey>(
+    () => (isManagerView ? 'review' : tab),
+    [isManagerView, tab],
+  );
 
   useEffect(() => {
-    if (!canReview && tab === 'review') setTab('mine');
-  }, [canReview, tab]);
+    if (isManagerView && tab !== 'review') {
+      const nextFilters: LeaveRequestFilters = {
+        status: 'pending',
+        leaveType: '',
+        dateFrom: '',
+        dateTo: '',
+        search: '',
+        requesterId: '',
+        page: 1,
+        limit: filters.limit || 12,
+      };
+      setTab('review');
+      setDraftFilters(nextFilters);
+      setFilters(nextFilters);
+      return;
+    }
+
+    if (!isManagerView && !canReview && tab === 'review') setTab('mine');
+  }, [canReview, filters.limit, isManagerView, tab]);
 
   const loadBootstrap = useCallback(async () => {
     try {
@@ -295,22 +316,33 @@ const LeaveRequestsPage = () => {
 
   const loadList = useCallback(
     async (nextFilters: LeaveRequestFilters, silent = false) => {
+      const requestVersion = ++listRequestVersionRef.current;
       try {
         if (silent) setRefreshing(true);
         else setLoading(true);
-        const result = tab === 'review'
+
+        const result = activeTab === 'review'
           ? await leaveRequestService.listReviewQueue(nextFilters)
           : await leaveRequestService.listMine(nextFilters);
+
+        if (requestVersion !== listRequestVersionRef.current) return;
         setItems(result.items);
         setPagination(result.pagination);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'درخواست‌های مرخصی دریافت نشد.');
+        if (requestVersion !== listRequestVersionRef.current) return;
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'درخواست‌های مرخصی دریافت نشد.',
+        );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestVersion === listRequestVersionRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [tab],
+    [activeTab],
   );
 
   const refreshAll = useCallback(async () => {
@@ -318,12 +350,14 @@ const LeaveRequestsPage = () => {
   }, [filters, loadBootstrap, loadList]);
 
   useEffect(() => {
+    if (sessionStatus === 'loading' || role === 'unknown') return;
     void loadBootstrap();
-  }, [loadBootstrap]);
+  }, [loadBootstrap, role, sessionStatus]);
 
   useEffect(() => {
+    if (sessionStatus === 'loading' || role === 'unknown') return;
     void loadList(filters);
-  }, [filters, loadList]);
+  }, [filters, loadList, role, sessionStatus]);
 
   const changeTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -351,7 +385,7 @@ const LeaveRequestsPage = () => {
 
   const clearFilters = () => {
     const nextFilters: LeaveRequestFilters = {
-      status: tab === 'review' ? 'pending' : '',
+      status: activeTab === 'review' ? 'pending' : '',
       leaveType: '',
       dateFrom: '',
       dateTo: '',
@@ -381,16 +415,16 @@ const LeaveRequestsPage = () => {
     }
   };
 
-  const pageTitle = role === 'expert' ? 'درخواست مرخصی من' : 'مدیریت درخواست‌های مرخصی';
-  const pageDescription = role === 'expert'
+  const pageTitle = isManagerView ? 'بررسی مرخصی کارشناسان' : 'درخواست مرخصی من';
+  const pageDescription = !isManagerView
     ? 'درخواست‌های روزانه، نیم‌روز یا ساعتی خود را ثبت کنید و نتیجه بررسی مدیر را ببینید.'
-    : 'مرخصی خود را ثبت کنید و درخواست‌های کارکنان را در کارتابل مدیریتی تأیید یا رد کنید.';
+    : 'درخواست‌های کارشناسان را بررسی کنید، تصمیم و توضیح مدیریتی را ثبت کنید و وضعیت حضور تیم را کنترل کنید.';
 
   return (
     <DashboardLayout>
       <div className="space-y-6" dir="rtl">
         <DashboardPageHeader
-          eyebrow={role === 'expert' ? 'فضای کاری کارشناس' : 'منابع انسانی و حضور'}
+          eyebrow={isManagerView ? 'منابع انسانی و حضور' : 'فضای کاری کارشناس'}
           title={pageTitle}
           description={pageDescription}
           actions={
@@ -399,25 +433,31 @@ const LeaveRequestsPage = () => {
                 {refreshing ? <span className="loading loading-spinner loading-sm" /> : <ArrowPathIcon className="h-5 w-5" />}
                 بروزرسانی
               </button>
-              <Link href="/dashboard/leave-requests/new" className="btn btn-primary rounded-2xl">
-                <PlusIcon className="h-5 w-5" />
-                ثبت درخواست جدید
-              </Link>
+              {canSubmit ? (
+                <Link href="/dashboard/leave-requests/new" className="btn btn-primary rounded-2xl">
+                  <PlusIcon className="h-5 w-5" />
+                  ثبت درخواست جدید
+                </Link>
+              ) : null}
             </div>
           }
         />
 
-        <div className={`grid gap-4 sm:grid-cols-2 ${canReview ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
-          <AdminStatCard title="کل درخواست‌های من" value={summary.mine.total.toLocaleString('fa-IR')} description="تمام وضعیت‌ها" icon={DocumentTextIcon} tone="primary" />
-          <AdminStatCard title="در انتظار بررسی" value={summary.mine.pending.toLocaleString('fa-IR')} description="درخواست‌های قابل ویرایش" icon={ClockIcon} tone="warning" />
-          <AdminStatCard title="تأیید شده" value={summary.mine.approved.toLocaleString('fa-IR')} description="مرخصی‌های پذیرفته‌شده" icon={CheckBadgeIcon} tone="success" />
-          <AdminStatCard title="رد یا لغو شده" value={(summary.mine.rejected + summary.mine.cancelled).toLocaleString('fa-IR')} description="سوابق تصمیم و لغو" icon={XCircleIcon} tone="error" />
-          {canReview ? (
-            <AdminStatCard title="منتظر تصمیم من" value={summary.review.pendingCount.toLocaleString('fa-IR')} description="درخواست سایر کاربران" icon={UserGroupIcon} tone="info" />
-          ) : null}
-        </div>
+        {isManagerView ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <AdminStatCard title="منتظر تصمیم مدیریت" value={summary.review.pendingCount.toLocaleString('fa-IR')} description="درخواست کارشناسان" icon={UserGroupIcon} tone="warning" />
+            <AdminStatCard title="مدت درخواست‌های معلق" value={`${Math.round(summary.review.pendingDurationMinutes / 60).toLocaleString('fa-IR')} ساعت`} description="مجموع زمان نیازمند بررسی" icon={ClockIcon} tone="info" />
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <AdminStatCard title="کل درخواست‌های من" value={summary.mine.total.toLocaleString('fa-IR')} description="تمام وضعیت‌ها" icon={DocumentTextIcon} tone="primary" />
+            <AdminStatCard title="در انتظار بررسی" value={summary.mine.pending.toLocaleString('fa-IR')} description="درخواست‌های قابل ویرایش" icon={ClockIcon} tone="warning" />
+            <AdminStatCard title="تأیید شده" value={summary.mine.approved.toLocaleString('fa-IR')} description="مرخصی‌های پذیرفته‌شده" icon={CheckBadgeIcon} tone="success" />
+            <AdminStatCard title="رد یا لغو شده" value={(summary.mine.rejected + summary.mine.cancelled).toLocaleString('fa-IR')} description="سوابق تصمیم و لغو" icon={XCircleIcon} tone="error" />
+          </div>
+        )}
 
-        {canReview ? (
+        {canReview && !isManagerView ? (
           <div className="avid-glass-surface flex flex-wrap gap-2 rounded-3xl p-2">
             <button type="button" className={`btn flex-1 rounded-2xl sm:flex-none ${tab === 'mine' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => changeTab('mine')}>
               <CalendarDaysIcon className="h-5 w-5" />
@@ -457,7 +497,7 @@ const LeaveRequestsPage = () => {
               </select>
             </label>
 
-            {tab === 'review' ? (
+            {activeTab === 'review' ? (
               <label className="form-control">
                 <span className="label label-text text-xs font-bold">درخواست‌دهنده</span>
                 <select className="select select-bordered bg-base-100" value={draftFilters.requesterId || ''} onChange={(event) => setDraftFilters((current) => ({ ...current, requesterId: event.target.value }))}>
@@ -467,7 +507,7 @@ const LeaveRequestsPage = () => {
               </label>
             ) : null}
 
-            <div className={tab === 'review' ? '' : 'xl:col-span-2'}>
+            <div className={activeTab === 'review' ? '' : 'xl:col-span-2'}>
               <ShamsiDateInput label="از تاریخ" value={draftFilters.dateFrom || ''} onChange={(value) => setDraftFilters((current) => ({ ...current, dateFrom: value }))} />
             </div>
             <div>
@@ -481,8 +521,8 @@ const LeaveRequestsPage = () => {
         </FilterBar>
 
         <SectionCard
-          title={tab === 'review' ? 'درخواست‌های نیازمند بررسی' : 'سوابق درخواست‌های من'}
-          description={tab === 'review'
+          title={activeTab === 'review' ? 'درخواست‌های نیازمند بررسی' : 'سوابق درخواست‌های من'}
+          description={activeTab === 'review'
             ? 'هر تصمیم همراه با نام مدیر، زمان بررسی و توضیح ثبت می‌شود. درخواست خودتان در این کارتابل نمایش داده نمی‌شود.'
             : 'درخواست‌های در انتظار را می‌توانید قبل از تصمیم مدیر ویرایش یا لغو کنید.'}
           actions={<SoftBadge className="bg-primary/10 text-primary">{pagination.total.toLocaleString('fa-IR')} درخواست</SoftBadge>}
@@ -496,9 +536,9 @@ const LeaveRequestsPage = () => {
               <CalendarDaysIcon className="h-14 w-14 text-base-content/25" />
               <h3 className="mt-4 text-lg font-black">درخواستی پیدا نشد</h3>
               <p className="mt-2 max-w-lg text-sm leading-7 text-base-content/55">
-                {tab === 'review' ? 'در حال حاضر درخواستی مطابق فیلترهای انتخابی برای بررسی وجود ندارد.' : 'هنوز درخواست مرخصی ثبت نکرده‌اید یا نتیجه‌ای مطابق فیلترها وجود ندارد.'}
+                {activeTab === 'review' ? 'در حال حاضر درخواستی مطابق فیلترهای انتخابی برای بررسی وجود ندارد.' : 'هنوز درخواست مرخصی ثبت نکرده‌اید یا نتیجه‌ای مطابق فیلترها وجود ندارد.'}
               </p>
-              {tab === 'mine' ? <Link href="/dashboard/leave-requests/new" className="btn btn-primary mt-5 rounded-2xl"><PlusIcon className="h-5 w-5" />ثبت اولین درخواست</Link> : null}
+              {activeTab === 'mine' && canSubmit ? <Link href="/dashboard/leave-requests/new" className="btn btn-primary mt-5 rounded-2xl"><PlusIcon className="h-5 w-5" />ثبت اولین درخواست</Link> : null}
             </div>
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
@@ -506,8 +546,7 @@ const LeaveRequestsPage = () => {
                 <LeaveRequestCard
                   key={getLeaveEntityId(request)}
                   request={request}
-                  reviewMode={tab === 'review'}
-                  onEdit={(value) => { setEditing(value); setFormOpen(true); }}
+                  reviewMode={activeTab === 'review'}
                   onCancel={(value) => void cancelRequest(value)}
                   onReview={setReviewing}
                 />
@@ -528,14 +567,6 @@ const LeaveRequestsPage = () => {
             </div>
           ) : null}
         </SectionCard>
-
-        <LeaveRequestFormModal
-          open={formOpen}
-          options={options}
-          request={editing}
-          onClose={() => { setFormOpen(false); setEditing(null); }}
-          onSaved={async () => { setFormOpen(false); setEditing(null); await refreshAll(); }}
-        />
 
         <LeaveReviewModal
           open={Boolean(reviewing)}

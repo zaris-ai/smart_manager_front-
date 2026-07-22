@@ -49,11 +49,6 @@ export const menuSectionLabels: Record<MenuSection, string> = {
 
 const ADMIN_ROLES = ['manager', 'board', 'admin', 'super_admin', 'project_owner'];
 const EXPERT_ROLES = ['expert', 'employee'];
-const ALL_PANEL_ROLES = [
-  ...ADMIN_ROLES,
-  'specialty_owner',
-  ...EXPERT_ROLES,
-];
 
 /**
  * Items are intentionally ordered by operational importance for each role.
@@ -153,25 +148,42 @@ export const menuItems: MenuItem[] = [
     icon: DocumentPlusIcon,
     section: 'personal',
     priority: 90,
-    allowedRoles: ALL_PANEL_ROLES,
+    allowedRoles: EXPERT_ROLES,
     activeMatch: 'exact',
   },
   {
-    label: 'پیگیری درخواست‌های مرخصی',
+    label: 'درخواست‌های مرخصی من',
     href: '/dashboard/leave-requests',
     icon: CalendarDaysIcon,
     section: 'personal',
     priority: 100,
-    allowedRoles: ALL_PANEL_ROLES,
+    allowedRoles: EXPERT_ROLES,
     activeMatch: 'exact',
   },
   {
-    label: 'انتقادات و پیشنهادها',
+    label: 'بررسی مرخصی کارشناسان',
+    href: '/dashboard/leave-requests',
+    icon: CalendarDaysIcon,
+    section: 'people',
+    priority: 115,
+    allowedRoles: ADMIN_ROLES,
+    activeMatch: 'exact',
+  },
+  {
+    label: 'انتقادات و پیشنهادهای من',
     href: '/dashboard/feedback',
     icon: ChatBubbleLeftRightIcon,
     section: 'personal',
     priority: 110,
-    allowedRoles: ALL_PANEL_ROLES,
+    allowedRoles: EXPERT_ROLES,
+  },
+  {
+    label: 'بررسی انتقادات و پیشنهادها',
+    href: '/dashboard/feedback',
+    icon: ChatBubbleLeftRightIcon,
+    section: 'people',
+    priority: 118,
+    allowedRoles: ADMIN_ROLES,
   },
 
   // Manager: people and access management

@@ -97,6 +97,14 @@ export const leaveRequestService = {
     return response.data.data || [];
   },
 
+  async getById(id: string): Promise<LeaveRequest> {
+    const response = await apiClient.get<ApiEnvelope<LeaveRequest>>(
+      `${BASE_PATH}/${id}`,
+      { headers: { 'X-Skip-Toast': '1' } },
+    );
+    return requireData(response.data.data, 'جزئیات درخواست مرخصی دریافت نشد.');
+  },
+
   async create(payload: LeaveRequestPayload): Promise<LeaveRequest> {
     const response = await apiClient.post<ApiEnvelope<LeaveRequest>>(
       BASE_PATH,

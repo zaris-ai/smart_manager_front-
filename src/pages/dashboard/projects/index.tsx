@@ -110,65 +110,6 @@ const isProjectOverdue = (project: Project): boolean => {
   return dueDate < new Date();
 };
 
-const normalizeAmount = (value?: number | string | null): number => {
-  const amount = Number(value || 0);
-
-  if (!Number.isFinite(amount)) return 0;
-
-  return Math.round(amount);
-};
-
-const formatAmount = (value?: number | string | null): string => {
-  return `${normalizeAmount(value).toLocaleString('fa-IR')} ریال`;
-};
-
-const getProjectFinance = (project: Project) => {
-  const phaseSummary = project.phaseSummary;
-
-  if (phaseSummary) {
-    const revenue = normalizeAmount(
-      phaseSummary.totalRealizedRevenue ?? phaseSummary.totalPotentialRevenue ?? phaseSummary.totalExpectedRevenue,
-    );
-    const expense = normalizeAmount(
-      phaseSummary.totalRealizedExpense ?? phaseSummary.totalRealizedCost ?? phaseSummary.totalPotentialCost ?? phaseSummary.totalExpectedExpense,
-    );
-
-    return {
-      revenue,
-      expense,
-      balance: revenue - expense,
-    };
-  }
-
-  const totals = (project.phases || []).reduce(
-    (acc, phase) => {
-      const financial = phase.financial || {};
-
-      acc.revenue += normalizeAmount(
-        financial.realizedRevenueAmount ?? financial.realizedRevenue ?? financial.potentialRevenueAmount ?? financial.expectedRevenue,
-      );
-      acc.expense += normalizeAmount(
-        financial.realizedCostAmount ?? financial.realizedExpense ?? financial.potentialCostAmount ?? financial.expectedExpense,
-      );
-
-      return acc;
-    },
-    { revenue: 0, expense: 0 },
-  );
-
-  return {
-    ...totals,
-    balance: totals.revenue - totals.expense,
-  };
-};
-
-const getFinanceBalanceClass = (value: number): string => {
-  if (value > 0) return 'text-success';
-  if (value < 0) return 'text-error';
-
-  return 'text-base-content/65';
-};
-
 const DashboardProjectsPage = () => {
   const { data: session } = useSession();
   const role = String(session?.user?.role || '').toLowerCase();
@@ -418,7 +359,7 @@ const DashboardProjectsPage = () => {
 
         <SectionCard
           title="لیست پروژه‌ها"
-          description="هر پروژه در یک ردیف کامل نمایش داده می‌شود؛ اولویت قابل ویرایش است و درآمد/هزینه فازها با رنگ‌بندی مدیریتی نمایش داده می‌شود."
+          description="هر پروژه در یک ردیف فشرده نمایش داده می‌شود؛ وضعیت، اولویت، مسئول، اعضا و زمان‌بندی بدون اشغال فضای اضافه قابل بررسی است."
           actions={
             <span className="badge badge-outline">
               {projects.length} پروژه
@@ -467,12 +408,11 @@ const DashboardProjectsPage = () => {
                 const ownerName = project.ownerId
                   ? getUserDisplayName(project.ownerId)
                   : 'تخصیص انجام نشده';
-                const finance = getProjectFinance(project);
 
                 return (
                   <div
                     key={projectId}
-                    className="grid gap-4 rounded-2xl border border-base-300 bg-base-200/40 p-4 transition hover:border-primary/40 hover:bg-primary/5 xl:grid-cols-[minmax(260px,1.3fr)_150px_160px_240px_150px_170px_56px] xl:items-center"
+                    className="grid gap-4 rounded-2xl border border-base-300 bg-base-200/40 p-4 transition hover:border-primary/40 hover:bg-primary/5 xl:grid-cols-[minmax(300px,1.6fr)_150px_160px_190px_180px_56px] xl:items-center"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -541,20 +481,6 @@ const DashboardProjectsPage = () => {
                       )}
                     </div>
 
-                    <div className="space-y-1 text-xs font-bold">
-                      <div className="flex items-center justify-between gap-4 rounded-lg bg-success/10 px-3 py-1 text-success">
-                        <span>درآمد</span>
-                        <span>{formatAmount(finance.revenue)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4 rounded-lg bg-error/10 px-3 py-1 text-error">
-                        <span>هزینه</span>
-                        <span>{formatAmount(finance.expense)}</span>
-                      </div>
-                      <div className={`flex items-center justify-between gap-4 rounded-lg bg-base-200 px-3 py-1 ${getFinanceBalanceClass(finance.balance)}`}>
-                        <span>مانده</span>
-                        <span>{formatAmount(finance.balance)}</span>
-                      </div>
-                    </div>
 
                     <div className="min-w-0 text-sm">
                       <div

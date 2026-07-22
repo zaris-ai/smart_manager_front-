@@ -85,6 +85,7 @@ export type ExpertWorkLog = {
   blockers?: string;
   nextSteps?: string;
   revision?: number;
+  source?: 'panel' | 'telegram_bot';
   isDeleted?: boolean;
   createdAt: string;
   updatedAt: string;

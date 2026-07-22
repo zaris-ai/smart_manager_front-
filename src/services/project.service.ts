@@ -1,8 +1,10 @@
 import apiClient from '@/lib/axios';
+import type { ExpertWorkLog } from '@/types/expert-work-log';
 import {
   ApiResponse,
   CalendarEvent,
   CreateProjectNotePayload,
+  ExpertProjectCompletion,
   getTaskId,
   PaginationState,
   Project,
@@ -16,6 +18,7 @@ import {
   ProjectProgressNote,
   ProjectTask,
   ProjectTaskPayload,
+  ProjectWorkHistoryResponse,
 } from '@/types/project';
 
 type QueryParams = Record<string, string | number | boolean | undefined | null>;
@@ -162,6 +165,281 @@ const unwrapData = <T>(responseData: ApiResponse<T> | T): T => {
   }
 
   return responseData as T;
+};
+
+
+type UnknownRecord = Record<string, unknown>;
+type ProjectWorkHistoryItem = ProjectWorkHistoryResponse['items'][number];
+
+const asRecord = (value: unknown): UnknownRecord | null => {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : null;
+};
+
+const firstString = (...values: unknown[]): string => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+
+  return '';
+};
+
+const firstNumber = (...values: unknown[]): number | null => {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+};
+
+const getReferenceValueId = (value: unknown): string => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  const record = asRecord(value);
+  return record ? firstString(record.id, record._id) : '';
+};
+
+const getReferenceValueIds = (value: unknown): string[] => {
+  const values = Array.isArray(value) ? value : [value];
+
+  return values
+    .map(getReferenceValueId)
+    .filter((item): item is string => Boolean(item));
+};
+
+const normalizeWorkHistoryKind = (
+  value: unknown,
+  item?: UnknownRecord | null,
+): ProjectWorkHistoryItem['kind'] => {
+  const normalized = firstString(value).toLowerCase();
+
+  if (['expert_work_log', 'expert-work-log', 'work_log', 'work-log'].includes(normalized)) {
+    return 'expert_work_log';
+  }
+
+  if (['expert_completion', 'expert-completion', 'completion'].includes(normalized)) {
+    return 'expert_completion';
+  }
+
+  if (['completed_task', 'completed-task', 'task', 'done_task'].includes(normalized)) {
+    return 'completed_task';
+  }
+
+  if (!item) return 'project_note';
+
+  // The expert-work-log endpoint returns raw documents without a `kind` field.
+  // Infer the record type from its domain-specific fields instead of treating
+  // every untyped record as a generic project note.
+  const status = firstString(item.status).toLowerCase();
+  const hasExpertReference = Boolean(item.expertId ?? item.expert);
+  const hasWorkLogFields = Boolean(
+    item.workDate ??
+      item.durationMinutes ??
+      item.progressPercent ??
+      item.blockers ??
+      item.nextSteps ??
+      item.phaseId ??
+      item.taskId,
+  );
+  const hasCompletionFields = Boolean(
+    item.completionDate ?? item.reviewedAt ?? item.reviewerId ?? item.managerNote,
+  );
+  const hasTaskFields =
+    Array.isArray(item.assignedUserIds) ||
+    ['done', 'completed'].includes(status) ||
+    Boolean(item.completedAt);
+
+  if (hasExpertReference && hasCompletionFields) return 'expert_completion';
+  if (hasExpertReference && hasWorkLogFields) return 'expert_work_log';
+  if (hasTaskFields) return 'completed_task';
+
+  return 'project_note';
+};
+
+const normalizeWorkHistorySource = (
+  value: unknown,
+): ProjectWorkHistoryItem['source'] => {
+  const normalized = firstString(value).toLowerCase();
+
+  return ['telegram', 'telegram_bot', 'telegram-bot', 'bot'].includes(normalized)
+    ? 'telegram_bot'
+    : 'panel';
+};
+
+const normalizeProjectWorkHistoryItem = (
+  value: unknown,
+  index: number,
+): ProjectWorkHistoryItem | null => {
+  const item = asRecord(value);
+  if (!item) return null;
+
+  const actor =
+    asRecord(item.actor) ||
+    asRecord(item.expert) ||
+    asRecord(item.expertId) ||
+    asRecord(item.user);
+  const registeredBy = asRecord(item.registeredBy) || asRecord(item.createdBy);
+  const reviewer = asRecord(item.reviewer) || asRecord(item.reviewerId);
+  const files = Array.isArray(item.files) ? item.files : [];
+  const occurredAt = firstString(
+    item.occurredAt,
+    item.workDate,
+    item.completionDate,
+    item.completedAt,
+    item.updatedAt,
+    item.createdAt,
+  );
+  const createdAt = firstString(item.createdAt, occurredAt);
+  const kind = normalizeWorkHistoryKind(
+    item.kind ?? item.type ?? item.recordType,
+    item,
+  );
+  const title = firstString(item.title, item.taskLabel, item.subject, 'فعالیت ثبت‌شده');
+  const description = firstString(
+    item.description,
+    item.summary,
+    item.note,
+    item.details,
+    'برای این فعالیت توضیحی ثبت نشده است.',
+  );
+
+  return {
+    id: firstString(item.id, item._id, `${kind}-${occurredAt || index}`),
+    kind,
+    source: normalizeWorkHistorySource(item.source ?? item.channel ?? item.origin),
+    occurredAt: occurredAt || createdAt || new Date(0).toISOString(),
+    createdAt: createdAt || occurredAt || new Date(0).toISOString(),
+    title,
+    description,
+    actorLabel: firstString(
+      item.actorLabel,
+      item.expertName,
+      item.userName,
+      actor?.fullName,
+      actor?.name,
+      actor?.username,
+      'کارشناس نامشخص',
+    ),
+    actorIds: Array.from(
+      new Set([
+        ...getReferenceValueIds(item.actorIds),
+        ...getReferenceValueIds(item.actorId),
+        ...getReferenceValueIds(item.expertId),
+        ...getReferenceValueIds(item.expert),
+        ...getReferenceValueIds(item.assignedUserIds),
+        ...getReferenceValueIds(item.assigneeId),
+      ]),
+    ),
+    registeredByLabel: firstString(
+      item.registeredByLabel,
+      registeredBy?.fullName,
+      registeredBy?.name,
+      registeredBy?.username,
+    ) || undefined,
+    reviewerLabel: firstString(
+      item.reviewerLabel,
+      reviewer?.fullName,
+      reviewer?.name,
+      reviewer?.username,
+    ) || undefined,
+    managerNote: firstString(item.managerNote, item.reviewNote) || undefined,
+    phaseLabel:
+      firstString(
+        item.phaseLabel,
+        item.phaseTitle,
+        asRecord(item.phaseId)?.title,
+        asRecord(item.phase)?.title,
+      ) || undefined,
+    taskLabel:
+      firstString(
+        item.taskLabel,
+        item.taskTitle,
+        asRecord(item.taskId)?.title,
+        asRecord(item.task)?.title,
+      ) || undefined,
+    durationMinutes: firstNumber(item.durationMinutes, item.duration),
+    progressPercent: firstNumber(item.progressPercent, item.progress),
+    deliverables: firstString(item.deliverables, item.outputs) || undefined,
+    blockers: firstString(item.blockers, item.obstacles) || undefined,
+    nextSteps: firstString(item.nextSteps, item.next_actions) || undefined,
+    status: firstString(item.status) as ProjectWorkHistoryItem['status'],
+    statusLabel: firstString(item.statusLabel) || undefined,
+    files: files as ProjectWorkHistoryItem['files'],
+  };
+};
+
+const normalizeProjectWorkHistoryResponse = (
+  payload: unknown,
+): ProjectWorkHistoryResponse => {
+  let current: unknown = payload;
+  let summaryCandidate: UnknownRecord | null = null;
+
+  for (let depth = 0; depth < 5; depth += 1) {
+    if (Array.isArray(current)) {
+      const items = current
+        .map(normalizeProjectWorkHistoryItem)
+        .filter((item): item is ProjectWorkHistoryItem => Boolean(item));
+
+      return {
+        items,
+        summary: {
+          total: items.length,
+          panel: items.filter((item) => item.source === 'panel').length,
+          telegram: items.filter((item) => item.source === 'telegram_bot').length,
+          expertEntries: items.filter((item) => item.kind !== 'project_note').length,
+        },
+      };
+    }
+
+    const record = asRecord(current);
+    if (!record) break;
+
+    const candidateItems = [
+      record.items,
+      record.history,
+      record.records,
+      record.workHistory,
+      record.activities,
+    ].find(Array.isArray);
+
+    if (Array.isArray(candidateItems)) {
+      const items = candidateItems
+        .map(normalizeProjectWorkHistoryItem)
+        .filter((item): item is ProjectWorkHistoryItem => Boolean(item));
+      summaryCandidate = asRecord(record.summary) || summaryCandidate;
+
+      return {
+        items,
+        summary: {
+          total: Number(summaryCandidate?.total ?? items.length) || items.length,
+          panel:
+            Number(summaryCandidate?.panel) ||
+            items.filter((item) => item.source === 'panel').length,
+          telegram:
+            Number(summaryCandidate?.telegram ?? summaryCandidate?.telegram_bot) ||
+            items.filter((item) => item.source === 'telegram_bot').length,
+          expertEntries:
+            Number(summaryCandidate?.expertEntries ?? summaryCandidate?.expert_entries) ||
+            items.filter((item) => item.kind !== 'project_note').length,
+        },
+      };
+    }
+
+    summaryCandidate = asRecord(record.summary) || summaryCandidate;
+    current = record.data ?? record.result ?? record.payload ?? record.response;
+  }
+
+  return {
+    items: [],
+    summary: { total: 0, panel: 0, telegram: 0, expertEntries: 0 },
+  };
 };
 
 const unwrapMessage = (error: unknown, fallback: string): string => {
@@ -745,6 +1023,53 @@ export const projectService = {
       await apiClient.delete(`/project-roles/${roleId}`);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در غیرفعال‌سازی نقش پروژه'));
+    }
+  },
+
+  async listExpertProjectCompletions(
+    projectId: string,
+  ): Promise<ExpertProjectCompletion[]> {
+    try {
+      const response = await apiClient.get(
+        `/projects/${projectId}/expert-completions`,
+      );
+
+      return unwrapData<ExpertProjectCompletion[]>(response.data) || [];
+    } catch (error) {
+      throw new Error(
+        unwrapMessage(error, 'خطا در دریافت کارهای تکمیل‌شده کارشناسان'),
+      );
+    }
+  },
+
+  async listProjectWorkHistory(
+    projectId: string,
+  ): Promise<ProjectWorkHistoryResponse> {
+    try {
+      const response = await apiClient.get(
+        `/projects/${projectId}/work-history`,
+        { headers: { 'X-Skip-Toast': '1' } },
+      );
+
+      return normalizeProjectWorkHistoryResponse(response.data);
+    } catch (error) {
+      throw new Error(
+        unwrapMessage(error, 'خطا در دریافت سوابق کامل کار پروژه'),
+      );
+    }
+  },
+
+  async listProjectExpertWorkLogs(projectId: string): Promise<ExpertWorkLog[]> {
+    try {
+      const response = await apiClient.get(
+        `/projects/${projectId}/expert-work-logs`,
+      );
+
+      return unwrapData<ExpertWorkLog[]>(response.data) || [];
+    } catch (error) {
+      throw new Error(
+        unwrapMessage(error, 'خطا در دریافت گزارش‌های کار کارشناسان'),
+      );
     }
   },
 

@@ -10,6 +10,7 @@ import type {
   LeaveRequestType,
 } from '@/types/leave-request';
 import { withAuth } from '@/utils/withAuth';
+import { getPanelRole } from '@/utils/role-access';
 import {
   CalendarDaysIcon,
   CheckCircleIcon,
@@ -18,6 +19,7 @@ import {
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/router';
+import { useSession } from 'next-auth/react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -44,12 +46,21 @@ const defaultPayload = (): LeaveRequestPayload => ({
 
 const NewLeaveRequestPage = () => {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const role = getPanelRole(session?.user?.role);
   const [options, setOptions] = useState<LeaveRequestOptions | null>(null);
   const [payload, setPayload] = useState<LeaveRequestPayload>(defaultPayload());
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (status !== 'loading' && (role === 'manager' || role === 'board')) {
+      void router.replace('/dashboard/leave-requests');
+    }
+  }, [role, router, status]);
+
+  useEffect(() => {
+    if (status === 'loading' || role !== 'expert') return;
     let active = true;
     leaveRequestService
       .getOptions()
@@ -63,7 +74,7 @@ const NewLeaveRequestPage = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [role, status]);
 
   const effectiveDurationType = useMemo<LeaveDurationType>(
     () => (payload.leaveType === 'hourly' ? 'hourly' : payload.durationType),
@@ -98,6 +109,11 @@ const NewLeaveRequestPage = () => {
 
   return (
     <DashboardLayout>
+      {status === 'loading' || role !== 'expert' ? (
+        <div className="flex min-h-[45vh] items-center justify-center">
+          <span className="loading loading-spinner loading-lg text-primary" />
+        </div>
+      ) : (
       <div className="space-y-6" dir="rtl">
         <DashboardPageHeader
           eyebrow="فرآیند مستقل ثبت درخواست"
@@ -254,6 +270,7 @@ const NewLeaveRequestPage = () => {
           </div>
         </div>
       </div>
+      )}
     </DashboardLayout>
   );
 };

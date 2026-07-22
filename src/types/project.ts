@@ -182,12 +182,80 @@ export type ProjectTask = {
   startDate?: string | null;
   dueDate?: string | null;
   completedAt?: string | null;
+  source?: 'web' | 'telegram_bot';
   files?: ProjectFile[];
   attachmentCount?: number;
   createdBy?: UserReference | null;
   updatedBy?: UserReference | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ExpertProjectCompletionStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled';
+
+export type ExpertProjectCompletion = {
+  id?: string;
+  _id?: string;
+  expertId: UserReference;
+  projectId: string | Project;
+  completionDate: string;
+  title: string;
+  summary: string;
+  deliverables: string;
+  durationMinutes?: number | null;
+  status: ExpertProjectCompletionStatus;
+  statusLabel?: string;
+  managerNote?: string;
+  reviewerId?: UserReference | null;
+  reviewedAt?: string | null;
+  source: 'panel' | 'telegram_bot';
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectWorkHistoryKind =
+  | 'project_note'
+  | 'expert_work_log'
+  | 'expert_completion'
+  | 'completed_task';
+
+export type ProjectWorkHistoryItem = {
+  id: string;
+  kind: ProjectWorkHistoryKind;
+  source: 'panel' | 'telegram_bot';
+  occurredAt: string;
+  createdAt: string;
+  title: string;
+  description: string;
+  actorLabel: string;
+  actorIds?: string[];
+  registeredByLabel?: string;
+  reviewerLabel?: string;
+  managerNote?: string;
+  phaseLabel?: string;
+  taskLabel?: string;
+  durationMinutes?: number | null;
+  progressPercent?: number | null;
+  deliverables?: string;
+  blockers?: string;
+  nextSteps?: string;
+  status?: ExpertProjectCompletionStatus | 'done';
+  statusLabel?: string;
+  files?: ProjectFile[];
+};
+
+export type ProjectWorkHistoryResponse = {
+  items: ProjectWorkHistoryItem[];
+  summary: {
+    total: number;
+    panel: number;
+    telegram: number;
+    expertEntries: number;
+  };
 };
 
 export type ProjectProgressNote = {
