@@ -1,5 +1,6 @@
 import { DashboardLayout } from '@/components/layouts';
 import { withAuth } from '@/utils';
+import { userService } from '@/services/user.service';
 import { getPanelRole } from '@/utils/role-access';
 import {
   ClipboardDocumentCheckIcon,
@@ -8,29 +9,31 @@ import {
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { useEffect, useState } from 'react';
 
 const DashboardTestCharts = dynamic(
   () => import('@/components/dashboard/DashboardTestCharts'),
   { ssr: false },
 );
 
-const ExpertDashboardHome = () => (
+const ExpertDashboardHome = ({ showLeague }: { showLeague: boolean }) => (
   <div className="space-y-6" dir="rtl">
     <section className="rounded-3xl border border-base-300 bg-base-100 p-6 shadow-sm">
       <div className="max-w-3xl">
         <span className="badge badge-primary badge-outline">فضای کاری کارشناس</span>
         <h1 className="mt-4 text-2xl font-black text-base-content">
-          ثبت فعالیت و مشاهده جایگاه رقابتی
+          {showLeague ? 'ثبت فعالیت و مشاهده جایگاه رقابتی' : 'ثبت و پیگیری فعالیت‌ها'}
         </h1>
         <p className="mt-3 leading-8 text-base-content/65">
-          از این صفحه می‌توانید فعالیت‌های انجام‌شده در پروژه‌های خود را ثبت کنید و
-          وضعیت خود را در لیگ کارشناسان ببینید.
+          {showLeague
+            ? 'از این صفحه می‌توانید فعالیت‌های انجام‌شده در پروژه‌های خود را ثبت کنید و وضعیت خود را در لیگ کارشناسان ببینید.'
+            : 'از این صفحه می‌توانید فعالیت‌های انجام‌شده در پروژه‌های خود را ثبت و پیگیری کنید.'}
         </p>
       </div>
     </section>
 
     <section className="grid gap-5 md:grid-cols-2">
-      <Link
+      {showLeague ? <Link
         href="/dashboard/expert-work-logs"
         className="group rounded-3xl border border-primary/25 bg-primary/5 p-6 transition hover:-translate-y-1 hover:border-primary/45 hover:shadow-lg"
       >
@@ -45,7 +48,7 @@ const ExpertDashboardHome = () => (
             <ClipboardDocumentCheckIcon className="h-7 w-7" />
           </div>
         </div>
-      </Link>
+      </Link> : null}
 
       <Link
         href="/dashboard/expert-competition"
@@ -69,16 +72,35 @@ const ExpertDashboardHome = () => (
 
 const DashboardHomePage = () => {
   const { data: session, status } = useSession();
-  const role = getPanelRole(session?.user?.role);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const role = getPanelRole(currentRole ?? session?.user?.role);
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    let active = true;
+    userService
+      .getCurrentUser()
+      .then((user) => {
+        if (active) setCurrentRole(String(user.role || ''));
+      })
+      .catch(() => {
+        if (active) setCurrentRole(String(session?.user?.role || ''));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.role, status]);
 
   return (
     <DashboardLayout>
-      {status === 'loading' ? (
+      {status === 'loading' || (status === 'authenticated' && currentRole === null) ? (
         <div className="flex min-h-[45vh] items-center justify-center">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
-      ) : role === 'expert' ? (
-        <ExpertDashboardHome />
+      ) : role === 'expert' || role === 'trainee' ? (
+        <ExpertDashboardHome showLeague={role === 'expert'} />
       ) : (
         <DashboardTestCharts />
       )}

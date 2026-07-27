@@ -48,7 +48,7 @@ export const menuSectionLabels: Record<MenuSection, string> = {
 };
 
 const ADMIN_ROLES = ['manager', 'board', 'admin', 'super_admin', 'project_owner'];
-const EXPERT_ROLES = ['expert', 'employee'];
+const EXPERT_ROLES = ['expert', 'employee', 'trainee'];
 
 /**
  * Items are intentionally ordered by operational importance for each role.
@@ -138,7 +138,7 @@ export const menuItems: MenuItem[] = [
     icon: TrophyIcon,
     section: 'expert',
     priority: 20,
-    allowedRoles: EXPERT_ROLES,
+    allowedRoles: ['expert', 'employee'],
   },
 
   // Shared personal actions

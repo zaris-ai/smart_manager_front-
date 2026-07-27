@@ -17,6 +17,17 @@ import {
   ClipboardDocumentListIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import TaskAssignees from '@/components/tasks/TaskAssignees';
+import {
+  formatShamsiDayNumber,
+  formatShamsiFullDate,
+  formatShamsiMonthYear,
+  getNextShamsiMonthStart,
+  getPreviousShamsiMonthStart,
+  getShamsiDateParts,
+  getStartOfShamsiMonth,
+  toSafeDate as parseDate,
+} from '@/utils/shamsi-date';
 
 type ProjectCalendarProps = {
   events: CalendarEvent[];
@@ -60,21 +71,7 @@ const isTaskEvent = (event: CalendarEvent): boolean => {
 };
 
 const toSafeDate = (value: Date | string): Date => {
-  if (value instanceof Date) return value;
-
-  /**
-   * If backend sends "YYYY-MM-DD", parse it as local date.
-   * This avoids timezone date shifting in the calendar.
-   */
-  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-
-  if (dateOnlyMatch) {
-    const [, year, month, day] = dateOnlyMatch;
-
-    return new Date(Number(year), Number(month) - 1, Number(day));
-  }
-
-  return new Date(value);
+  return parseDate(value) || new Date();
 };
 
 const toLocalDateKey = (value: Date | string): string => {
@@ -88,11 +85,8 @@ const toLocalDateKey = (value: Date | string): string => {
 };
 
 const getMonthDays = (currentDate: Date): Date[] => {
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
+  const firstDay = getStartOfShamsiMonth(currentDate);
+  const nextMonthStart = getNextShamsiMonthStart(firstDay);
 
   const jsDay = firstDay.getDay();
   const saturdayBasedOffset = (jsDay + 1) % 7;
@@ -100,11 +94,17 @@ const getMonthDays = (currentDate: Date): Date[] => {
   const days: Date[] = [];
 
   for (let index = saturdayBasedOffset; index > 0; index -= 1) {
-    days.push(new Date(year, month, 1 - index));
+    const day = new Date(firstDay);
+    day.setDate(firstDay.getDate() - index);
+    days.push(day);
   }
 
-  for (let day = 1; day <= lastDay.getDate(); day += 1) {
-    days.push(new Date(year, month, day));
+  for (
+    let day = new Date(firstDay);
+    day < nextMonthStart;
+    day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)
+  ) {
+    days.push(day);
   }
 
   while (days.length % 7 !== 0) {
@@ -117,25 +117,15 @@ const getMonthDays = (currentDate: Date): Date[] => {
 };
 
 const formatMonthTitle = (date: Date): string => {
-  return new Intl.DateTimeFormat('fa-IR', {
-    month: 'long',
-    year: 'numeric',
-  }).format(date);
+  return formatShamsiMonthYear(date);
 };
 
 const formatDayNumber = (date: Date): string => {
-  return new Intl.DateTimeFormat('fa-IR', {
-    day: 'numeric',
-  }).format(date);
+  return formatShamsiDayNumber(date);
 };
 
 const formatFullDate = (date: Date | string): string => {
-  return new Intl.DateTimeFormat('fa-IR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(toSafeDate(date));
+  return formatShamsiFullDate(toSafeDate(date));
 };
 
 const getEventBadgeClass = (type: CalendarEvent['type']): string => {
@@ -230,7 +220,9 @@ export const ProjectCalendar = ({
   showCloseActions = false,
   onCloseTask,
 }: ProjectCalendarProps) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() =>
+    getStartOfShamsiMonth(new Date()),
+  );
   const [selectedDay, setSelectedDay] = useState<SelectedDay | null>(null);
 
   const monthDays = useMemo(() => {
@@ -251,13 +243,13 @@ export const ProjectCalendar = ({
 
   const goPreviousMonth = () => {
     setCurrentDate((value) => {
-      return new Date(value.getFullYear(), value.getMonth() - 1, 1);
+      return getPreviousShamsiMonthStart(value);
     });
   };
 
   const goNextMonth = () => {
     setCurrentDate((value) => {
-      return new Date(value.getFullYear(), value.getMonth() + 1, 1);
+      return getNextShamsiMonthStart(value);
     });
   };
 
@@ -298,7 +290,7 @@ export const ProjectCalendar = ({
 
             <button
               className="btn btn-sm btn-ghost"
-              onClick={() => setCurrentDate(new Date())}
+              onClick={() => setCurrentDate(getStartOfShamsiMonth(new Date()))}
             >
               امروز
             </button>
@@ -323,7 +315,11 @@ export const ProjectCalendar = ({
             const dateKey = toLocalDateKey(day);
             const dayEvents = eventsByDate[dateKey] || [];
             const dayTaskEvents = dayEvents.filter(isTaskEvent);
-            const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+            const dayParts = getShamsiDateParts(day);
+            const currentParts = getShamsiDateParts(currentDate);
+            const isCurrentMonth =
+              dayParts?.year === currentParts?.year &&
+              dayParts?.month === currentParts?.month;
 
             return (
               <button
@@ -488,8 +484,11 @@ export const ProjectCalendar = ({
                                   {event.title}
                                 </div>
 
-                                <div className="mt-2 text-sm text-base-content/60">
-                                  مسئولان و نقش‌ها: {formatProjectMemberRoles(event)}
+                                <div className="mt-3">
+                                  <div className="mb-2 text-xs font-bold text-base-content/55">
+                                    مجریان وظیفه
+                                  </div>
+                                  <TaskAssignees users={event.assignedUserIds} compact />
                                 </div>
                               </div>
 

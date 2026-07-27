@@ -1,5 +1,6 @@
 import ShamsiDateInput from '@/components/common/ShamsiDateInput';
 import { DashboardLayout } from '@/components/layouts';
+import TaskAssignees from '@/components/tasks/TaskAssignees';
 import {
   ProjectTimelineFlow,
   TimelineFlowItem,
@@ -1317,6 +1318,19 @@ const DashboardProjectDetailsPage = () => {
 
     return Array.from(uniqueManagers.values());
   }, [project, managerUsers]);
+
+  const projectTaskAssigneeOptions = useMemo(() => {
+    if (!project) return [];
+
+    const uniqueUsers = new Map<string, Exclude<(typeof project.assignedUserIds)[number], string>>();
+    [project.ownerId, ...(project.assignedUserIds || [])].forEach((user) => {
+      if (!user || typeof user === 'string') return;
+      const userId = getReferenceId(user);
+      if (userId) uniqueUsers.set(userId, user);
+    });
+
+    return Array.from(uniqueUsers.values());
+  }, [project]);
 
   useEffect(() => {
     if (!projectManagerOptions.length) return;
@@ -2836,14 +2850,14 @@ const DashboardProjectDetailsPage = () => {
                         }
                         required
                       >
-                        <option value="">انتخاب مدیر مسئول</option>
+                        <option value="">انتخاب مجری وظیفه</option>
 
-                        {projectManagerOptions.map((manager) => (
+                        {projectTaskAssigneeOptions.map((assignee) => (
                           <option
-                            key={getReferenceId(manager)}
-                            value={getReferenceId(manager)}
+                            key={getReferenceId(assignee)}
+                            value={getReferenceId(assignee)}
                           >
-                            {getUserDisplayName(manager)}
+                            {getUserDisplayName(assignee)} — {assignee.roleLabel || assignee.role || 'نقش نامشخص'}
                           </option>
                         ))}
                       </select>
@@ -3029,13 +3043,11 @@ const DashboardProjectDetailsPage = () => {
                                   {task.description || 'بدون توضیح'}
                                 </div>
 
-                                <div className="mt-2 text-xs text-primary">
-                                  مسئول:{' '}
-                                  {task.assignedUserIds?.length
-                                    ? task.assignedUserIds
-                                        .map((user) => getUserDisplayName(user))
-                                        .join('، ')
-                                    : 'بدون مسئول مشخص'}
+                                <div className="mt-3">
+                                  <div className="mb-2 text-xs font-bold text-base-content/55">
+                                    مجریان وظیفه
+                                  </div>
+                                  <TaskAssignees users={task.assignedUserIds} />
                                 </div>
 
                                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -3152,7 +3164,7 @@ const DashboardProjectDetailsPage = () => {
                                     {task.description || 'برای این وظیفه توضیحی ثبت نشده است.'}
                                   </p>
                                   <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-base-content/60">
-                                    <span>مسئول: {task.assignedUserIds?.length ? task.assignedUserIds.map((user) => getUserDisplayName(user)).join('، ') : 'بدون مسئول مشخص'}</span>
+                                    <TaskAssignees users={task.assignedUserIds} compact />
                                     <span>موعد: {formatDate(task.dueDate)}</span>
                                     <span>تاریخ تکمیل: {formatDate(task.completedAt || task.updatedAt)}</span>
                                   </div>

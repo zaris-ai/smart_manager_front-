@@ -10,7 +10,7 @@ import type {
   LeaveRequestType,
 } from '@/types/leave-request';
 import { withAuth } from '@/utils/withAuth';
-import { getPanelRole } from '@/utils/role-access';
+import { getPanelRole, isExpertPanelRole } from '@/utils/role-access';
 import {
   CalendarDaysIcon,
   CheckCircleIcon,
@@ -48,6 +48,7 @@ const NewLeaveRequestPage = () => {
   const router = useRouter();
   const { data: session, status } = useSession();
   const role = getPanelRole(session?.user?.role);
+  const isExpertUser = isExpertPanelRole(session?.user?.role);
   const [options, setOptions] = useState<LeaveRequestOptions | null>(null);
   const [payload, setPayload] = useState<LeaveRequestPayload>(defaultPayload());
   const [saving, setSaving] = useState(false);
@@ -60,7 +61,7 @@ const NewLeaveRequestPage = () => {
   }, [role, router, status]);
 
   useEffect(() => {
-    if (status === 'loading' || role !== 'expert') return;
+    if (status === 'loading' || !isExpertUser) return;
     let active = true;
     leaveRequestService
       .getOptions()
@@ -74,7 +75,7 @@ const NewLeaveRequestPage = () => {
     return () => {
       active = false;
     };
-  }, [role, status]);
+  }, [isExpertUser, status]);
 
   const effectiveDurationType = useMemo<LeaveDurationType>(
     () => (payload.leaveType === 'hourly' ? 'hourly' : payload.durationType),
@@ -109,7 +110,7 @@ const NewLeaveRequestPage = () => {
 
   return (
     <DashboardLayout>
-      {status === 'loading' || role !== 'expert' ? (
+      {status === 'loading' || !isExpertUser ? (
         <div className="flex min-h-[45vh] items-center justify-center">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>

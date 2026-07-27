@@ -1,7 +1,9 @@
 import { cn } from '@/utils/cn';
 import { getPanelRole } from '@/utils/role-access';
+import { userService } from '@/services/user.service';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { useEffect, useState } from 'react';
 import {
   menuSectionLabels,
   type MenuItem,
@@ -31,7 +33,26 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
   collapsedSidebar,
 }) => {
   const { data: session, status } = useSession();
-  const role = getPanelRole(session?.user?.role);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const role = getPanelRole(currentRole ?? session?.user?.role);
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    let active = true;
+    userService
+      .getCurrentUser()
+      .then((user) => {
+        if (active) setCurrentRole(String(user.role || ''));
+      })
+      .catch(() => {
+        if (active) setCurrentRole(String(session?.user?.role || ''));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.role, status]);
 
   const visibleItems = menuItems
     .filter((item) => {
@@ -42,13 +63,17 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
       // is loading, the menu is rendered after hydration instead of redirecting
       // or blocking the user.
       if (status === 'loading') return false;
+      if (status === 'authenticated' && currentRole === null) {
+        return item.href !== '/dashboard/expert-competition';
+      }
       if (role === 'unknown') return true;
 
       return item.allowedRoles.map(getPanelRole).includes(role);
     })
     .sort((left, right) => left.priority - right.priority);
 
-  const sectionOrder = role === 'expert' ? expertSectionOrder : managerSectionOrder;
+  const isExpertWorkspace = role === 'expert' || role === 'trainee';
+  const sectionOrder = isExpertWorkspace ? expertSectionOrder : managerSectionOrder;
   const groupedItems = sectionOrder
     .map((section) => ({
       section,
@@ -104,7 +129,11 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
       {!collapsedSidebar ? (
         <div className="mb-4 px-3">
           <p className="text-xs font-black text-base-content/45">
-            {role === 'expert' ? 'فضای کاری کارشناس' : 'پنل مدیریت'}
+            {role === 'trainee'
+              ? 'فضای کاری کارآموز'
+              : role === 'expert'
+                ? 'فضای کاری کارشناس'
+                : 'پنل مدیریت'}
           </p>
           <p className="mt-1 text-[11px] leading-5 text-base-content/35">
             صفحات بر اساس اولویت کاری مرتب شده‌اند.

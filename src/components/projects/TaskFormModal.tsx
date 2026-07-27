@@ -327,6 +327,8 @@ export const TaskFormModal = ({
                             {getUserDisplayName(user)}
                           </span>
                           <span className="mt-1 block break-words text-xs text-base-content/55">
+                            {user.roleLabel || user.role || 'نقش نامشخص'}
+                            {' · '}
                             {user.email || user.username || 'بدون اطلاعات تماس'}
                           </span>
                         </span>

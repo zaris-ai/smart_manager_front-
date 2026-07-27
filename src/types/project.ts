@@ -1,4 +1,10 @@
-export type UserRole = 'board' | 'manager' | 'expert' | 'admin' | 'employee';
+export type UserRole =
+  | 'board'
+  | 'manager'
+  | 'expert'
+  | 'trainee'
+  | 'admin'
+  | 'employee';
 
 export type ProjectStatus =
   | 'negotiating'
@@ -319,6 +325,8 @@ export type CalendarEvent = {
   status: ProjectStatus | ProjectTaskStatus | string;
   priority: ProjectPriority;
   assignedUserIds: UserReference[];
+  createdBy?: UserReference | null;
+  updatedBy?: UserReference | null;
 };
 
 export type ProjectPayload = {
@@ -477,5 +485,5 @@ export const isEmployeeUser = (user?: UserSummary | null): boolean => {
 
   const role = String(user.role).toLowerCase();
 
-  return role === 'employee' || role === 'expert';
+  return role === 'employee' || role === 'expert' || role === 'trainee';
 };

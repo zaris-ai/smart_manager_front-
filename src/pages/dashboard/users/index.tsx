@@ -57,6 +57,8 @@ const roleBadgeClass = (role?: string): string => {
       return 'badge-primary';
     case 'expert':
       return 'badge-info';
+    case 'trainee':
+      return 'badge-accent';
     default:
       return 'badge-neutral';
   }

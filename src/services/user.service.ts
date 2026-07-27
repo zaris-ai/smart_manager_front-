@@ -93,7 +93,7 @@ const normalizePayload = (payload: UserPayload | Partial<UserPayload>) => {
   if (normalizedRole) {
     normalizedPayload.role = normalizedRole;
 
-    if (normalizedRole !== 'expert') {
+    if (normalizedRole !== 'expert' && normalizedRole !== 'trainee') {
       normalizedPayload.managerId = null;
     } else if ('managerId' in payload) {
       normalizedPayload.managerId = payload.managerId || null;

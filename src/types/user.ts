@@ -1,4 +1,4 @@
-export type UserRole = 'board' | 'manager' | 'expert';
+export type UserRole = 'board' | 'manager' | 'expert' | 'trainee';
 
 export type UserStatus = 'active' | 'inactive' | 'suspended';
 
@@ -112,6 +112,7 @@ export const userRoleLabels: Record<UserRole, string> = {
   board: 'هیئت مدیره',
   manager: 'مدیر',
   expert: 'کارشناس',
+  trainee: 'کارآموز',
 };
 
 export const userStatusLabels: Record<UserStatus, string> = {
@@ -140,6 +141,11 @@ export const userRoleOptions: Array<{
     label: userRoleLabels.expert,
     description: 'دسترسی اجرایی محدود؛ ثبت گزارش، شواهد و پیگیری وظایف خود.',
   },
+  {
+    value: 'trainee',
+    label: userRoleLabels.trainee,
+    description: 'همان دسترسی‌های کارشناس، بدون حضور در لیگ کارشناسان.',
+  },
 ];
 
 export const userStatusOptions: Array<{
@@ -164,6 +170,7 @@ export const ROLE_ACCESS_LEVEL: Record<UserRole, number> = {
   board: 100,
   manager: 70,
   expert: 10,
+  trainee: 10,
 };
 
 export const ACCESS_LEVEL_LABELS = [
@@ -184,6 +191,12 @@ export const ACCESS_LEVEL_LABELS = [
     role: 'expert' as UserRole,
     label: 'کارشناس',
     description: 'دسترسی اجرایی محدود؛ ثبت گزارش، شواهد و پیگیری وظایف خود.',
+  },
+  {
+    value: 10,
+    role: 'trainee' as UserRole,
+    label: 'کارآموز',
+    description: 'همان دسترسی اجرایی کارشناس، بدون حضور در لیگ کارشناسان.',
   },
 ];
 
@@ -242,6 +255,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermission[]> = {
     UserPermission.RISKS_READ,
     UserPermission.RISKS_CREATE,
   ],
+  trainee: [
+    UserPermission.PROJECTS_READ,
+    UserPermission.REPORTS_CREATE,
+    UserPermission.EVIDENCE_CREATE,
+    UserPermission.RISKS_READ,
+    UserPermission.RISKS_CREATE,
+  ],
 };
 
 export const getUserId = (user: AppUser): string => {
@@ -269,6 +289,7 @@ export const normalizeUserRole = (role?: string | null): UserRole => {
   if (normalized === 'board') return 'board';
   if (normalized === 'manager') return 'manager';
   if (normalized === 'expert') return 'expert';
+  if (normalized === 'trainee') return 'trainee';
 
   /**
    * Backward compatibility with old frontend/backend values.
@@ -311,7 +332,8 @@ export const isManagerRole = (role?: string | null): boolean => {
 };
 
 export const isExpertRole = (role?: string | null): boolean => {
-  return normalizeUserRole(role) === 'expert';
+  const normalizedRole = normalizeUserRole(role);
+  return normalizedRole === 'expert' || normalizedRole === 'trainee';
 };
 
 export const canBeAssignedAsManager = (role?: string | null): boolean => {
@@ -319,7 +341,8 @@ export const canBeAssignedAsManager = (role?: string | null): boolean => {
 };
 
 export const canHaveManager = (role?: string | null): boolean => {
-  return normalizeUserRole(role) === 'expert';
+  const normalizedRole = normalizeUserRole(role);
+  return normalizedRole === 'expert' || normalizedRole === 'trainee';
 };
 
 export const getRoleAccessLevel = (role?: string | null): number => {

@@ -19,7 +19,7 @@ import type {
   FeedbackType,
 } from '@/types/feedback';
 import type { AppUser } from '@/types/user';
-import { getPanelRole } from '@/utils/role-access';
+import { getPanelRole, isExpertPanelRole } from '@/utils/role-access';
 import { formatShamsiDateTime } from '@/utils/shamsi-date';
 import { confirmToast } from '@/utils/sonner-confirm';
 import { withAuth } from '@/utils/withAuth';
@@ -169,6 +169,7 @@ const FeedbackCard = ({
 const FeedbackPage = () => {
   const { data: session } = useSession();
   const role = getPanelRole(session?.user?.role);
+  const isExpertUser = isExpertPanelRole(session?.user?.role);
   const [options, setOptions] = useState<FeedbackOptions | null>(null);
   const [summary, setSummary] = useState<FeedbackSummary>(EMPTY_SUMMARY);
   const [tab, setTab] = useState<'mine' | 'inbox'>('mine');
@@ -186,9 +187,9 @@ const FeedbackPage = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const canReview = Boolean(options?.permissions.canReview || summary.permissions.canReview);
-  const canSubmit = Boolean(options?.permissions.canSubmit) && role === 'expert';
+  const canSubmit = Boolean(options?.permissions.canSubmit) && isExpertUser;
   const isManagerView =
-    role === 'manager' || role === 'board' || (canReview && role !== 'expert');
+    role === 'manager' || role === 'board' || (canReview && !isExpertUser);
 
   const loadList = useCallback(async () => {
     const result = tab === 'inbox' ? await feedbackService.listInbox(filters) : await feedbackService.listMine(filters);

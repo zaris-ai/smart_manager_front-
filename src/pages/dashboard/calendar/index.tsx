@@ -51,7 +51,6 @@ const DashboardCalendarPage = () => {
     const loadUsers = useCallback(async () => {
         try {
             const response = await userService.listUsers({
-                role: 'manager',
                 isActive: true,
                 limit: 100,
             });
@@ -142,8 +141,8 @@ const DashboardCalendarPage = () => {
                         <div>
                             <span className="font-black text-base-content">نمای فعلی: </span>
                             {onlyMine
-                                ? 'فقط کارهای مدیر واردشده'
-                                : 'همه کارها یا کارهای مدیر انتخاب‌شده'}
+                                ? 'فقط کارهای کاربر واردشده'
+                                : 'همه کارها یا کارهای کاربر انتخاب‌شده'}
                         </div>
 
                         <div className="flex items-center gap-2 text-xs">
@@ -159,7 +158,7 @@ const DashboardCalendarPage = () => {
                             onChange={(event) => handleAssignedUserChange(event.target.value)}
                             disabled={onlyMine}
                         >
-                            <option value="">همه مدیران</option>
+                            <option value="">همه کاربران</option>
                             {users.map((user) => (
                                 <option key={getUserId(user)} value={getUserId(user)}>
                                     {getUserDisplayName(user)}

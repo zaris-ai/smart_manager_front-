@@ -21,7 +21,6 @@ import {
   userRoleLabels,
   UserRole,
   userStatusLabels,
-  UserStatus,
 } from '@/types/user';
 
 type UserFormModalProps = {
@@ -76,6 +75,12 @@ const roleCards: Record<
     description: 'مشاهده و انجام پروژه‌ها و وظایف تخصیص‌یافته',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     activeClassName: 'ring-emerald-500 border-emerald-500 bg-emerald-100',
+  },
+  trainee: {
+    title: 'کارآموز',
+    description: 'همان دسترسی‌های کارشناس برای پروژه‌ها و گزارش‌ها، بدون حضور در لیگ',
+    className: 'border-teal-200 bg-teal-50 text-teal-800',
+    activeClassName: 'ring-teal-500 border-teal-500 bg-teal-100',
   },
 };
 
@@ -179,7 +184,10 @@ const UserFormModal = ({
         ...values,
         role: normalizedRole,
         status: normalizeUserStatus(values.status),
-        managerId: normalizedRole === 'expert' ? values.managerId || null : null,
+        managerId:
+          normalizedRole === 'expert' || normalizedRole === 'trainee'
+            ? values.managerId || null
+            : null,
         password: values.password || undefined,
       };
 
@@ -392,7 +400,7 @@ const UserFormModal = ({
                 </select>
               </label>
 
-              {selectedRole === 'expert' ? (
+              {selectedRole === 'expert' || selectedRole === 'trainee' ? (
                 <label className="form-control">
                   <span className="label label-text">مدیر مستقیم</span>
                   <select

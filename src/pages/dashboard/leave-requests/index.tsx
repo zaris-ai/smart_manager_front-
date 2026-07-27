@@ -20,7 +20,7 @@ import type {
 } from '@/types/leave-request';
 import { getLeaveEntityId } from '@/types/leave-request';
 import type { AppUser } from '@/types/user';
-import { getPanelRole } from '@/utils/role-access';
+import { getPanelRole, isExpertPanelRole } from '@/utils/role-access';
 import {
   formatShamsiDateLong,
   formatShamsiDateTime,
@@ -243,6 +243,7 @@ const LeaveRequestCard = ({
 const LeaveRequestsPage = () => {
   const { data: session, status: sessionStatus } = useSession();
   const role = getPanelRole(session?.user?.role);
+  const isExpertUser = isExpertPanelRole(session?.user?.role);
   const [tab, setTab] = useState<TabKey>('mine');
   const [options, setOptions] = useState<LeaveRequestOptions | null>(null);
   const [summary, setSummary] = useState<LeaveRequestSummary>(EMPTY_SUMMARY);
@@ -267,9 +268,9 @@ const LeaveRequestsPage = () => {
   const listRequestVersionRef = useRef(0);
 
   const canReview = Boolean(options?.permissions.canReview || summary.permissions.canReview);
-  const canSubmit = Boolean(options?.permissions.canSubmit) && role === 'expert';
+  const canSubmit = Boolean(options?.permissions.canSubmit) && isExpertUser;
   const isManagerView =
-    role === 'manager' || role === 'board' || (canReview && role !== 'expert');
+    role === 'manager' || role === 'board' || (canReview && !isExpertUser);
   const activeTab = useMemo<TabKey>(
     () => (isManagerView ? 'review' : tab),
     [isManagerView, tab],

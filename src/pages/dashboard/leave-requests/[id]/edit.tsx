@@ -15,7 +15,7 @@ import type {
   LeaveRequestType,
 } from '@/types/leave-request';
 import { getLeaveEntityId } from '@/types/leave-request';
-import { getPanelRole } from '@/utils/role-access';
+import { isExpertPanelRole } from '@/utils/role-access';
 import { withAuth } from '@/utils/withAuth';
 import {
   CalendarDaysIcon,
@@ -48,7 +48,7 @@ const requestToPayload = (request: LeaveRequest): LeaveRequestPayload => ({
 const EditLeaveRequestPage = () => {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
-  const role = getPanelRole(session?.user?.role);
+  const isExpertUser = isExpertPanelRole(session?.user?.role);
   const requestId = typeof router.query.id === 'string' ? router.query.id : '';
 
   const [options, setOptions] = useState<LeaveRequestOptions | null>(null);
@@ -59,13 +59,13 @@ const EditLeaveRequestPage = () => {
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    if (sessionStatus !== 'loading' && role !== 'expert') {
+    if (sessionStatus !== 'loading' && !isExpertUser) {
       void router.replace('/dashboard/leave-requests');
     }
-  }, [role, router, sessionStatus]);
+  }, [isExpertUser, router, sessionStatus]);
 
   useEffect(() => {
-    if (!router.isReady || !requestId || sessionStatus === 'loading' || role !== 'expert') {
+    if (!router.isReady || !requestId || sessionStatus === 'loading' || !isExpertUser) {
       return;
     }
 
@@ -98,7 +98,7 @@ const EditLeaveRequestPage = () => {
     return () => {
       active = false;
     };
-  }, [requestId, role, router.isReady, sessionStatus]);
+  }, [isExpertUser, requestId, router.isReady, sessionStatus]);
 
   const effectiveDurationType = useMemo<LeaveDurationType>(
     () =>
@@ -162,7 +162,7 @@ const EditLeaveRequestPage = () => {
 
   return (
     <DashboardLayout>
-      {sessionStatus === 'loading' || role !== 'expert' ? (
+      {sessionStatus === 'loading' || !isExpertUser ? (
         <div className="flex min-h-[45vh] items-center justify-center">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
