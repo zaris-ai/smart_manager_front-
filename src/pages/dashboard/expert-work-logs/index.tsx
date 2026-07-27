@@ -31,6 +31,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { toast } from 'sonner';
 
 const DEFAULT_SUMMARY: ExpertWorkLogSummary = {
@@ -61,6 +62,7 @@ const formatDuration = (minutes: number): string => {
 };
 
 const ExpertWorkLogsPage = () => {
+  const router = useRouter();
   const [projects, setProjects] = useState<ExpertWorkLogProject[]>([]);
   const [items, setItems] = useState<ExpertWorkLog[]>([]);
   const [summary, setSummary] = useState<ExpertWorkLogSummary>(DEFAULT_SUMMARY);
@@ -164,6 +166,17 @@ const ExpertWorkLogsPage = () => {
     setEditingWorkLog(null);
     setFormOpen(true);
   };
+
+  useEffect(() => {
+    if (!router.isReady || router.query.new !== '1') return;
+
+    openCreateForm();
+    void router.replace(
+      { pathname: router.pathname, query: {} },
+      undefined,
+      { shallow: true },
+    );
+  }, [router, router.query.new]);
 
   const openEditForm = (workLog: ExpertWorkLog) => {
     setEditingWorkLog(workLog);

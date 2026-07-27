@@ -4,6 +4,7 @@ import { userService } from '@/services/user.service';
 import { getPanelRole } from '@/utils/role-access';
 import {
   ClipboardDocumentCheckIcon,
+  PlusCircleIcon,
   TrophyIcon,
 } from '@heroicons/react/24/outline';
 import dynamic from 'next/dynamic';
@@ -33,7 +34,7 @@ const ExpertDashboardHome = ({ showLeague }: { showLeague: boolean }) => (
     </section>
 
     <section className="grid gap-5 md:grid-cols-2">
-      {showLeague ? <Link
+      <Link
         href="/dashboard/expert-work-logs"
         className="group rounded-3xl border border-primary/25 bg-primary/5 p-6 transition hover:-translate-y-1 hover:border-primary/45 hover:shadow-lg"
       >
@@ -48,24 +49,43 @@ const ExpertDashboardHome = ({ showLeague }: { showLeague: boolean }) => (
             <ClipboardDocumentCheckIcon className="h-7 w-7" />
           </div>
         </div>
-      </Link> : null}
-
-      <Link
-        href="/dashboard/expert-competition"
-        className="group rounded-3xl border border-warning/30 bg-warning/10 p-6 transition hover:-translate-y-1 hover:border-warning/50 hover:shadow-lg"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-black text-base-content">لیگ رقابتی کارشناسان</h2>
-            <p className="mt-2 leading-7 text-base-content/60">
-              رتبه، امتیاز فعالیت، فاصله تا جایگاه بعدی و نشان‌های رقابتی خود را ببینید.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-warning p-3 text-warning-content">
-            <TrophyIcon className="h-7 w-7" />
-          </div>
-        </div>
       </Link>
+
+      {showLeague ? (
+        <Link
+          href="/dashboard/expert-competition"
+          className="group rounded-3xl border border-warning/30 bg-warning/10 p-6 transition hover:-translate-y-1 hover:border-warning/50 hover:shadow-lg"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black text-base-content">لیگ رقابتی کارشناسان</h2>
+              <p className="mt-2 leading-7 text-base-content/60">
+                رتبه، امتیاز فعالیت، فاصله تا جایگاه بعدی و نشان‌های رقابتی خود را ببینید.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-warning p-3 text-warning-content">
+              <TrophyIcon className="h-7 w-7" />
+            </div>
+          </div>
+        </Link>
+      ) : (
+        <Link
+          href="/dashboard/expert-work-logs?new=1"
+          className="group rounded-3xl border border-success/30 bg-success/10 p-6 transition hover:-translate-y-1 hover:border-success/50 hover:shadow-lg"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black text-base-content">ثبت گزارش کار</h2>
+              <p className="mt-2 leading-7 text-base-content/60">
+                گزارش فعالیت جدید خود را برای پروژه و فاز مربوط ثبت کنید.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-success p-3 text-success-content">
+              <PlusCircleIcon className="h-7 w-7" />
+            </div>
+          </div>
+        </Link>
+      )}
     </section>
   </div>
 );
