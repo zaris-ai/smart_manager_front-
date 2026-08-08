@@ -21,7 +21,7 @@ export interface ProjectTask {
   title: string;
   description?: string;
 
-  status?: 'todo' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
+  status?: 'todo' | 'in_progress' | 'pending_review' | 'blocked' | 'done' | 'cancelled';
   priority?: 'low' | 'medium' | 'high' | 'critical';
 
   responsibilities: TaskResponsibility[];

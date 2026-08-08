@@ -665,7 +665,7 @@ const DashboardProjectDetailsPage = () => {
   const canViewManagerWorkspace =
     currentRole === 'manager' || currentRole === 'board';
   const canViewExpertWorkspace =
-    currentRole === 'manager' || currentRole === 'board' || currentRole === 'expert';
+    currentRole === 'manager' || currentRole === 'board' || currentRole === 'expert' || currentRole === 'trainee';
   const canViewProjectWorkHistory = canViewManagerWorkspace;
 
   const [project, setProject] = useState<Project | null>(null);
@@ -684,6 +684,9 @@ const DashboardProjectDetailsPage = () => {
 
   const [savingWorkLog, setSavingWorkLog] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
+  const [reviewingTaskId, setReviewingTaskId] = useState('');
+  const [taskSubmissionDrafts, setTaskSubmissionDrafts] = useState<Record<string, string>>({});
+  const [taskReviewDrafts, setTaskReviewDrafts] = useState<Record<string, string>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const [workNote, setWorkNote] = useState('');
@@ -1120,7 +1123,7 @@ const DashboardProjectDetailsPage = () => {
   }, [projectWorkEntries]);
 
   const visibleExpertTaskActivityEntries = useMemo(() => {
-    if (currentRole !== 'expert') return expertTaskActivityEntries;
+    if (currentRole !== 'expert' && currentRole !== 'trainee') return expertTaskActivityEntries;
 
     return expertTaskActivityEntries.filter((entry) =>
       (entry.actorIds || []).includes(currentUserId),
@@ -1868,6 +1871,51 @@ const DashboardProjectDetailsPage = () => {
       setError(err instanceof Error ? err.message : 'خطا در آپلود فایل');
     } finally {
       setUploadingFile(false);
+    }
+  };
+
+  const handleSubmitTaskForReview = async (task: ProjectTask) => {
+    if (!projectId) return;
+    const taskId = getTaskId(task);
+    try {
+      setReviewingTaskId(taskId);
+      setError('');
+      await projectService.submitTaskForReview(
+        projectId,
+        taskId,
+        taskSubmissionDrafts[taskId]?.trim() || '',
+      );
+      setTaskSubmissionDrafts((current) => ({ ...current, [taskId]: '' }));
+      await loadProjectWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در ارسال کار برای تأیید');
+    } finally {
+      setReviewingTaskId('');
+    }
+  };
+
+  const handleReviewTaskSubmission = async (
+    task: ProjectTask,
+    decision: 'approved' | 'rejected',
+  ) => {
+    if (!projectId) return;
+    const taskId = getTaskId(task);
+    const reviewNote = taskReviewDrafts[taskId]?.trim() || '';
+    if (decision === 'rejected' && !reviewNote) {
+      setError('برای رد کار، دلیل یا بازخورد اصلاحی را وارد کنید.');
+      return;
+    }
+
+    try {
+      setReviewingTaskId(taskId);
+      setError('');
+      await projectService.reviewTaskSubmission(projectId, taskId, decision, reviewNote);
+      setTaskReviewDrafts((current) => ({ ...current, [taskId]: '' }));
+      await loadProjectWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا در بررسی کار کارآموز');
+    } finally {
+      setReviewingTaskId('');
     }
   };
 
@@ -3091,7 +3139,7 @@ const DashboardProjectDetailsPage = () => {
                                   ویرایش
                                 </button>
 
-                                {task.status !== 'in_progress' ? (
+                                {task.status !== 'in_progress' && task.status !== 'pending_review' ? (
                                   <button
                                     className="btn btn-xs btn-outline"
                                     onClick={() =>
@@ -3102,22 +3150,101 @@ const DashboardProjectDetailsPage = () => {
                                   </button>
                                 ) : null}
 
-                                {canCloseTask ? (
+                                {currentRole === 'trainee' && canCloseTask && task.status !== 'pending_review' ? (
                                   <button
                                     className="btn btn-xs btn-success"
-                                    onClick={() =>
-                                      handleUpdateTaskStatus(task, 'done')
-                                    }
+                                    disabled={reviewingTaskId === getTaskId(task)}
+                                    onClick={() => handleSubmitTaskForReview(task)}
                                   >
-                                    بستن کار
+                                    <CheckCircleIcon className="h-4 w-4" />
+                                    ارسال برای تأیید کارشناس
                                   </button>
-                                ) : (
-                                  <span className="badge badge-ghost">
-                                    فقط مدیر مسئول می‌تواند این کار را ببندد
+                                ) : null}
+
+                                {currentRole === 'expert' && canCloseTask && task.status !== 'pending_review' ? (
+                                  <button
+                                    className="btn btn-xs btn-success"
+                                    onClick={() => handleUpdateTaskStatus(task, 'done')}
+                                  >
+                                    بستن کار خودم
+                                  </button>
+                                ) : null}
+
+                                {task.status === 'pending_review' ? (
+                                  <span className="badge badge-warning gap-1">
+                                    <ClockIcon className="h-3.5 w-3.5" />
+                                    منتظر بررسی کارشناس
                                   </span>
-                                )}
+                                ) : null}
                               </div>
                             </div>
+
+                            {currentRole === 'trainee' && canCloseTask && task.status !== 'pending_review' && task.status !== 'cancelled' ? (
+                              <div className="mt-4 rounded-2xl border border-success/20 bg-success/5 p-3">
+                                <label className="mb-2 block text-xs font-black text-base-content/70">توضیح تحویل برای کارشناس</label>
+                                <textarea
+                                  className="textarea textarea-bordered min-h-20 w-full"
+                                  value={taskSubmissionDrafts[getTaskId(task)] || ''}
+                                  onChange={(event) =>
+                                    setTaskSubmissionDrafts((current) => ({ ...current, [getTaskId(task)]: event.target.value }))
+                                  }
+                                  maxLength={3000}
+                                  placeholder="خلاصه کاری که انجام شده، خروجی تحویل‌شده یا نکته‌ای که کارشناس باید بررسی کند..."
+                                />
+                              </div>
+                            ) : null}
+
+                            {task.status === 'pending_review' ? (
+                              <div className="mt-4 rounded-2xl border border-warning/25 bg-warning/5 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <div className="font-black text-base-content">تحویل کارآموز در انتظار بررسی</div>
+                                    <div className="mt-1 text-xs text-base-content/60">ارسال: {formatDate(task.submittedAt)}</div>
+                                  </div>
+                                </div>
+                                {task.submissionNote ? (
+                                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-base-content/75">{task.submissionNote}</p>
+                                ) : null}
+                                {currentRole === 'expert' ? (
+                                  <div className="mt-4 space-y-3">
+                                    <textarea
+                                      className="textarea textarea-bordered min-h-20 w-full"
+                                      value={taskReviewDrafts[getTaskId(task)] || ''}
+                                      onChange={(event) =>
+                                        setTaskReviewDrafts((current) => ({ ...current, [getTaskId(task)]: event.target.value }))
+                                      }
+                                      maxLength={3000}
+                                      placeholder="نتیجه بررسی یا بازخورد اصلاحی؛ برای رد کار الزامی است."
+                                    />
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        className="btn btn-sm btn-success"
+                                        disabled={reviewingTaskId === getTaskId(task)}
+                                        onClick={() => handleReviewTaskSubmission(task, 'approved')}
+                                      >
+                                        <CheckCircleIcon className="h-4 w-4" />
+                                        تأیید و ثبت در کارهای تکمیل‌شده
+                                      </button>
+                                      <button
+                                        className="btn btn-sm btn-error btn-outline"
+                                        disabled={reviewingTaskId === getTaskId(task)}
+                                        onClick={() => handleReviewTaskSubmission(task, 'rejected')}
+                                      >
+                                        <XMarkIcon className="h-4 w-4" />
+                                        رد و بازگشت برای اصلاح
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            {task.reviewDecision === 'rejected' && task.reviewNote ? (
+                              <div className="mt-4 rounded-2xl border border-error/20 bg-error/5 p-3 text-sm leading-7">
+                                <div className="font-black text-error">بازخورد آخرین بررسی کارشناس</div>
+                                <p className="mt-1 whitespace-pre-wrap text-base-content/75">{task.reviewNote}</p>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })

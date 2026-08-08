@@ -21,6 +21,7 @@ export type ProjectPriority = 'low' | 'medium' | 'high' | 'critical';
 export type ProjectTaskStatus =
   | 'todo'
   | 'in_progress'
+  | 'pending_review'
   | 'blocked'
   | 'done'
   | 'cancelled';
@@ -188,6 +189,14 @@ export type ProjectTask = {
   startDate?: string | null;
   dueDate?: string | null;
   completedAt?: string | null;
+  submittedAt?: string | null;
+  submittedBy?: UserReference | null;
+  submissionNote?: string;
+  reviewedAt?: string | null;
+  reviewedBy?: UserReference | null;
+  reviewDecision?: 'approved' | 'rejected' | null;
+  reviewNote?: string;
+  reviewHistory?: Array<{ decision: 'approved' | 'rejected'; reviewedAt: string; reviewedBy: UserReference; note?: string }>;
   source?: 'web' | 'telegram_bot';
   files?: ProjectFile[];
   attachmentCount?: number;
@@ -195,6 +204,11 @@ export type ProjectTask = {
   updatedBy?: UserReference | null;
   createdAt: string;
   updatedAt: string;
+};
+
+
+export type PendingProjectTaskReview = Omit<ProjectTask, 'projectId'> & {
+  projectId: string | Pick<Project, 'id' | '_id' | 'title' | 'status' | 'statusLabel' | 'priority' | 'priorityLabel'>;
 };
 
 export type ExpertProjectCompletionStatus =
@@ -414,6 +428,7 @@ export const projectPriorityLabels: Record<ProjectPriority, string> = {
 export const projectTaskStatusLabels: Record<ProjectTaskStatus, string> = {
   todo: 'برای انجام',
   in_progress: 'در حال انجام',
+  pending_review: 'در انتظار تأیید کارشناس',
   blocked: 'مسدود',
   done: 'انجام‌شده',
   cancelled: 'لغوشده',

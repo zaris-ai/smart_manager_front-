@@ -7,6 +7,7 @@ import {
   ExpertProjectCompletion,
   getTaskId,
   PaginationState,
+  PendingProjectTaskReview,
   Project,
   ProjectFile,
   ProjectImportResult,
@@ -1131,6 +1132,58 @@ export const projectService = {
       return await attachProjectFilesToTask(projectId, updatedTask);
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در ویرایش وظیفه'));
+    }
+  },
+
+
+  async listPendingTaskReviews(): Promise<PendingProjectTaskReview[]> {
+    try {
+      const response = await apiClient.get('/projects/review-queue', {
+        headers: { 'X-Skip-Toast': '1' },
+      });
+      return unwrapData<PendingProjectTaskReview[]>(response.data) || [];
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در دریافت کارهای در انتظار بررسی'));
+    }
+  },
+
+  async submitTaskForReview(
+    projectId: string,
+    taskId: string,
+    submissionNote = '',
+  ): Promise<ProjectTask> {
+    try {
+      const response = await apiClient.post(
+        `/projects/${projectId}/tasks/${taskId}/submit-review`,
+        { submissionNote },
+        { headers: { 'X-Toast-Success-Message': 'کار برای تأیید کارشناس ارسال شد.' } },
+      );
+      return await attachProjectFilesToTask(projectId, unwrapData<ProjectTask>(response.data));
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در ارسال کار برای تأیید'));
+    }
+  },
+
+  async reviewTaskSubmission(
+    projectId: string,
+    taskId: string,
+    decision: 'approved' | 'rejected',
+    reviewNote = '',
+  ): Promise<ProjectTask> {
+    try {
+      const response = await apiClient.post(
+        `/projects/${projectId}/tasks/${taskId}/review`,
+        { decision, reviewNote },
+        {
+          headers: {
+            'X-Toast-Success-Message':
+              decision === 'approved' ? 'کار کارآموز تأیید شد.' : 'کار برای اصلاح بازگردانده شد.',
+          },
+        },
+      );
+      return await attachProjectFilesToTask(projectId, unwrapData<ProjectTask>(response.data));
+    } catch (error) {
+      throw new Error(unwrapMessage(error, 'خطا در بررسی کار کارآموز'));
     }
   },
 

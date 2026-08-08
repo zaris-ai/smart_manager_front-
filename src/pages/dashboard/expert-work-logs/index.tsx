@@ -11,6 +11,7 @@ import {
 } from '@/components/expert-work-logs';
 import DashboardLayout from '@/components/layouts/DashboardLayout';
 import expertWorkLogService from '@/services/expert-work-log.service';
+import { projectService } from '@/services/project.service';
 import type {
   ExpertWorkLog,
   ExpertWorkLogFilters,
@@ -18,7 +19,7 @@ import type {
   ExpertWorkLogSummary,
 } from '@/types/expert-work-log';
 import { getEntityId } from '@/types/expert-work-log';
-import type { PaginationState } from '@/types/project';
+import type { PaginationState, PendingProjectTaskReview, UserReference } from '@/types/project';
 import { confirmToast } from '@/utils/sonner-confirm';
 import { withAuth } from '@/utils/withAuth';
 import {
@@ -29,6 +30,9 @@ import {
   DocumentCheckIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  CheckCircleIcon,
+  XMarkIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
@@ -61,6 +65,25 @@ const formatDuration = (minutes: number): string => {
   return `${remaining.toLocaleString('fa-IR')} دقیقه`;
 };
 
+const getUserLabel = (user?: UserReference | null): string => {
+  if (!user) return 'کارآموز نامشخص';
+  if (typeof user === 'string') return user;
+  return (
+    user.fullName?.trim() ||
+    [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+    user.username ||
+    user.email ||
+    'کارآموز نامشخص'
+  );
+};
+
+const getReviewTaskId = (task: PendingProjectTaskReview): string => String(task.id || task._id || '');
+
+const getReviewProjectTitle = (task: PendingProjectTaskReview): string => {
+  if (typeof task.projectId === 'string') return 'پروژه';
+  return task.projectId?.title || 'پروژه';
+};
+
 const ExpertWorkLogsPage = () => {
   const router = useRouter();
   const [projects, setProjects] = useState<ExpertWorkLogProject[]>([]);
@@ -70,6 +93,10 @@ const ExpertWorkLogsPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projectLoading, setProjectLoading] = useState(true);
+  const [pendingReviews, setPendingReviews] = useState<PendingProjectTaskReview[]>([]);
+  const [pendingReviewsLoading, setPendingReviewsLoading] = useState(true);
+  const [reviewingTaskId, setReviewingTaskId] = useState('');
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   const [filters, setFilters] = useState<ExpertWorkLogFilters>({
     projectId: '',
@@ -99,6 +126,18 @@ const ExpertWorkLogsPage = () => {
     }
   }, []);
 
+  const loadPendingReviews = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setPendingReviewsLoading(true);
+      const result = await projectService.listPendingTaskReviews();
+      setPendingReviews(result);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'کارهای در انتظار بررسی دریافت نشد.');
+    } finally {
+      setPendingReviewsLoading(false);
+    }
+  }, []);
+
   const loadWorkLogs = useCallback(
     async (nextFilters: ExpertWorkLogFilters, silent = false) => {
       try {
@@ -120,8 +159,8 @@ const ExpertWorkLogsPage = () => {
   );
 
   useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
+    void Promise.all([loadProjects(), loadPendingReviews()]);
+  }, [loadPendingReviews, loadProjects]);
 
   useEffect(() => {
     void loadWorkLogs(filters);
@@ -211,6 +250,36 @@ const ExpertWorkLogsPage = () => {
     }
   };
 
+  const handleReview = async (task: PendingProjectTaskReview, decision: 'approved' | 'rejected') => {
+    const taskId = getReviewTaskId(task);
+    const projectId = typeof task.projectId === 'string' ? task.projectId : String(task.projectId?.id || task.projectId?._id || '');
+    const reviewNote = reviewNotes[taskId]?.trim() || '';
+
+    if (!taskId || !projectId) {
+      toast.error('شناسه پروژه یا وظیفه معتبر نیست.');
+      return;
+    }
+    if (decision === 'rejected' && !reviewNote) {
+      toast.error('برای رد کار، دلیل یا بازخورد اصلاحی را وارد کنید.');
+      return;
+    }
+
+    try {
+      setReviewingTaskId(taskId);
+      await projectService.reviewTaskSubmission(projectId, taskId, decision, reviewNote);
+      setReviewNotes((current) => {
+        const next = { ...current };
+        delete next[taskId];
+        return next;
+      });
+      await Promise.all([loadPendingReviews(true), loadWorkLogs(filters, true)]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ثبت نتیجه بررسی انجام نشد.');
+    } finally {
+      setReviewingTaskId('');
+    }
+  };
+
   const changePage = (page: number) => {
     if (page < 1 || page > pagination.totalPages || page === pagination.page) return;
     setFilters((current) => ({ ...current, page }));
@@ -229,7 +298,7 @@ const ExpertWorkLogsPage = () => {
               <button
                 type="button"
                 className="btn btn-outline rounded-2xl"
-                onClick={() => void loadWorkLogs(filters, true)}
+                onClick={() => void Promise.all([loadWorkLogs(filters, true), loadPendingReviews(true)])}
                 disabled={refreshing}
               >
                 {refreshing ? (
@@ -251,6 +320,92 @@ const ExpertWorkLogsPage = () => {
             </div>
           }
         />
+
+        <SectionCard
+          title="کارهای کارآموزان در انتظار بررسی"
+          description="همه کارهای تحویل‌شده در پروژه‌هایی که عضو آن‌ها هستید اینجا نمایش داده می‌شوند. هر کارشناس همان پروژه می‌تواند آن‌ها را تأیید یا برای اصلاح رد کند."
+          actions={
+            <span className={`badge ${pendingReviews.length ? 'badge-warning' : 'badge-ghost'} px-4 py-3 font-bold`}>
+              {pendingReviews.length.toLocaleString('fa-IR')} مورد منتظر بررسی
+            </span>
+          }
+        >
+          {pendingReviewsLoading ? (
+            <div className="flex min-h-28 items-center justify-center">
+              <span className="loading loading-spinner loading-md" />
+            </div>
+          ) : pendingReviews.length ? (
+            <div className="grid gap-4 xl:grid-cols-2">
+              {pendingReviews.map((task) => {
+                const taskId = getReviewTaskId(task);
+                return (
+                  <article key={taskId} className="rounded-3xl border border-warning/25 bg-warning/5 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <span className="badge badge-warning">منتظر بررسی</span>
+                          <span className="badge badge-ghost">{getReviewProjectTitle(task)}</span>
+                        </div>
+                        <h3 className="text-base font-black text-base-content">{task.title}</h3>
+                        <div className="mt-2 flex items-center gap-2 text-sm text-base-content/60">
+                          <UserCircleIcon className="h-5 w-5" />
+                          <span>کارآموز: {getUserLabel(task.submittedBy || task.assignedUserIds?.[0])}</span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-base-content/55">
+                        تحویل: {task.submittedAt ? new Date(task.submittedAt).toLocaleString('fa-IR') : '—'}
+                      </div>
+                    </div>
+
+                    {task.description ? (
+                      <p className="mt-4 text-sm leading-7 text-base-content/65">{task.description}</p>
+                    ) : null}
+
+                    <div className="mt-4 rounded-2xl border border-base-300 bg-base-100 p-4">
+                      <div className="text-xs font-black text-base-content/55">توضیح تحویل کارآموز</div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-base-content/80">
+                        {task.submissionNote || 'توضیحی برای تحویل ثبت نشده است.'}
+                      </p>
+                    </div>
+
+                    <textarea
+                      className="textarea textarea-bordered mt-4 min-h-24 w-full bg-base-100"
+                      value={reviewNotes[taskId] || ''}
+                      onChange={(event) => setReviewNotes((current) => ({ ...current, [taskId]: event.target.value }))}
+                      maxLength={3000}
+                      placeholder="بازخورد بررسی را وارد کنید. برای رد کار، ثبت دلیل الزامی است."
+                    />
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-success btn-sm rounded-xl"
+                        disabled={reviewingTaskId === taskId}
+                        onClick={() => void handleReview(task, 'approved')}
+                      >
+                        <CheckCircleIcon className="h-4 w-4" />
+                        تأیید
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-error btn-outline btn-sm rounded-xl"
+                        disabled={reviewingTaskId === taskId}
+                        onClick={() => void handleReview(task, 'rejected')}
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                        رد و بازگشت برای اصلاح
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-base-300 p-8 text-center text-sm text-base-content/55">
+              در حال حاضر هیچ کار تحویل‌شده‌ای منتظر تأیید یا رد شما نیست.
+            </div>
+          )}
+        </SectionCard>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <AdminStatCard
