@@ -84,8 +84,21 @@ const getReviewProjectTitle = (task: PendingProjectTaskReview): string => {
   return task.projectId?.title || 'پروژه';
 };
 
-const ExpertWorkLogsPage = () => {
+type ExpertWorkLogsPageProps = {
+  session?: {
+    user?: {
+      role?: string | null;
+    };
+  };
+};
+
+const ExpertWorkLogsPage = ({ session }: ExpertWorkLogsPageProps) => {
   const router = useRouter();
+  const normalizedRole = String(session?.user?.role || '')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_');
+  const canReviewTraineeTasks = ['expert', 'employee'].includes(normalizedRole);
   const [projects, setProjects] = useState<ExpertWorkLogProject[]>([]);
   const [items, setItems] = useState<ExpertWorkLog[]>([]);
   const [summary, setSummary] = useState<ExpertWorkLogSummary>(DEFAULT_SUMMARY);
@@ -159,8 +172,17 @@ const ExpertWorkLogsPage = () => {
   );
 
   useEffect(() => {
-    void Promise.all([loadProjects(), loadPendingReviews()]);
-  }, [loadPendingReviews, loadProjects]);
+    const requests: Promise<unknown>[] = [loadProjects()];
+
+    if (canReviewTraineeTasks) {
+      requests.push(loadPendingReviews());
+    } else {
+      setPendingReviews([]);
+      setPendingReviewsLoading(false);
+    }
+
+    void Promise.all(requests);
+  }, [canReviewTraineeTasks, loadPendingReviews, loadProjects]);
 
   useEffect(() => {
     void loadWorkLogs(filters);
@@ -298,7 +320,12 @@ const ExpertWorkLogsPage = () => {
               <button
                 type="button"
                 className="btn btn-outline rounded-2xl"
-                onClick={() => void Promise.all([loadWorkLogs(filters, true), loadPendingReviews(true)])}
+                onClick={() =>
+                  void Promise.all([
+                    loadWorkLogs(filters, true),
+                    ...(canReviewTraineeTasks ? [loadPendingReviews(true)] : []),
+                  ])
+                }
                 disabled={refreshing}
               >
                 {refreshing ? (
@@ -321,15 +348,16 @@ const ExpertWorkLogsPage = () => {
           }
         />
 
-        <SectionCard
-          title="کارهای کارآموزان در انتظار بررسی"
-          description="همه کارهای تحویل‌شده در پروژه‌هایی که عضو آن‌ها هستید اینجا نمایش داده می‌شوند. هر کارشناس همان پروژه می‌تواند آن‌ها را تأیید یا برای اصلاح رد کند."
-          actions={
-            <span className={`badge ${pendingReviews.length ? 'badge-warning' : 'badge-ghost'} px-4 py-3 font-bold`}>
-              {pendingReviews.length.toLocaleString('fa-IR')} مورد منتظر بررسی
-            </span>
-          }
-        >
+        {canReviewTraineeTasks ? (
+          <SectionCard
+            title="کارهای کارآموزان در انتظار بررسی"
+            description="همه کارهای تحویل‌شده در پروژه‌هایی که عضو آن‌ها هستید اینجا نمایش داده می‌شوند. هر کارشناس همان پروژه می‌تواند آن‌ها را تأیید کند یا با رد کردن، وظیفه را به‌طور کامل حذف کند."
+            actions={
+              <span className={`badge ${pendingReviews.length ? 'badge-warning' : 'badge-ghost'} px-4 py-3 font-bold`}>
+                {pendingReviews.length.toLocaleString('fa-IR')} مورد منتظر بررسی
+              </span>
+            }
+          >
           {pendingReviewsLoading ? (
             <div className="flex min-h-28 items-center justify-center">
               <span className="loading loading-spinner loading-md" />
@@ -373,7 +401,7 @@ const ExpertWorkLogsPage = () => {
                       value={reviewNotes[taskId] || ''}
                       onChange={(event) => setReviewNotes((current) => ({ ...current, [taskId]: event.target.value }))}
                       maxLength={3000}
-                      placeholder="بازخورد بررسی را وارد کنید. برای رد کار، ثبت دلیل الزامی است."
+                      placeholder="نتیجه بررسی را وارد کنید. برای رد کار، ثبت دلیل الزامی است و وظیفه حذف می‌شود."
                     />
 
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -393,7 +421,7 @@ const ExpertWorkLogsPage = () => {
                         onClick={() => void handleReview(task, 'rejected')}
                       >
                         <XMarkIcon className="h-4 w-4" />
-                        رد و بازگشت برای اصلاح
+                        رد و حذف کامل
                       </button>
                     </div>
                   </article>
@@ -405,7 +433,8 @@ const ExpertWorkLogsPage = () => {
               در حال حاضر هیچ کار تحویل‌شده‌ای منتظر تأیید یا رد شما نیست.
             </div>
           )}
-        </SectionCard>
+          </SectionCard>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <AdminStatCard

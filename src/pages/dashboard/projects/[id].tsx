@@ -2937,13 +2937,13 @@ const DashboardProjectDetailsPage = () => {
                           }))
                         }
                       >
-                        {Object.entries(projectTaskStatusLabels).map(
-                          ([value, label]) => (
+                        {Object.entries(projectTaskStatusLabels)
+                          .filter(([value]) => value !== 'pending_review')
+                          .map(([value, label]) => (
                             <option key={value} value={value}>
                               {label}
                             </option>
-                          ),
-                        )}
+                          ))}
                       </select>
 
                       <ShamsiDateInput
@@ -3214,7 +3214,7 @@ const DashboardProjectDetailsPage = () => {
                                         setTaskReviewDrafts((current) => ({ ...current, [getTaskId(task)]: event.target.value }))
                                       }
                                       maxLength={3000}
-                                      placeholder="نتیجه بررسی یا بازخورد اصلاحی؛ برای رد کار الزامی است."
+                                      placeholder="نتیجه بررسی را وارد کنید؛ برای رد کار، ثبت دلیل الزامی است و وظیفه حذف می‌شود."
                                     />
                                     <div className="flex flex-wrap gap-2">
                                       <button
@@ -3231,7 +3231,7 @@ const DashboardProjectDetailsPage = () => {
                                         onClick={() => handleReviewTaskSubmission(task, 'rejected')}
                                       >
                                         <XMarkIcon className="h-4 w-4" />
-                                        رد و بازگشت برای اصلاح
+                                        رد و حذف کامل
                                       </button>
                                     </div>
                                   </div>

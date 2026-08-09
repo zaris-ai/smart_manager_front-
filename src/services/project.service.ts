@@ -1169,7 +1169,7 @@ export const projectService = {
     taskId: string,
     decision: 'approved' | 'rejected',
     reviewNote = '',
-  ): Promise<ProjectTask> {
+  ): Promise<ProjectTask | null> {
     try {
       const response = await apiClient.post(
         `/projects/${projectId}/tasks/${taskId}/review`,
@@ -1177,11 +1177,16 @@ export const projectService = {
         {
           headers: {
             'X-Toast-Success-Message':
-              decision === 'approved' ? 'کار کارآموز تأیید شد.' : 'کار برای اصلاح بازگردانده شد.',
+              decision === 'approved'
+                ? 'کار کارآموز تأیید و در پیشرفت پروژه ثبت شد.'
+                : 'کار کارآموز رد و به‌طور کامل حذف شد.',
           },
         },
       );
-      return await attachProjectFilesToTask(projectId, unwrapData<ProjectTask>(response.data));
+      const reviewedTask = unwrapData<ProjectTask | null>(response.data);
+      return reviewedTask
+        ? await attachProjectFilesToTask(projectId, reviewedTask)
+        : null;
     } catch (error) {
       throw new Error(unwrapMessage(error, 'خطا در بررسی کار کارآموز'));
     }
